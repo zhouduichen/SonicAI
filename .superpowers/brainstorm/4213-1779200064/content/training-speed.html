@@ -1,0 +1,126 @@
+<h2>RVC 训练时间线 & 优化策略</h2>
+<p class="subtitle">RTX 5080 16GB 下的实际耗时估算（4分钟歌曲 10分钟干声素材）</p>
+
+<div class="section">
+  <h3>完整训练流程</h3>
+  <div style="display:flex;gap:12px;margin-top:16px;">
+    <div style="flex:1;background:#141414;border-radius:12px;padding:16px;text-align:center;">
+      <div style="color:#d4a853;font-size:24px;font-weight:600;margin-bottom:4px;">~2min</div>
+      <div style="font-size:12px;color:#a0a0a0;">人声分离<br><span style="color:#666;">Demucs/UVR</span></div>
+    </div>
+    <div style="color:#666;display:flex;align-items:center;">→</div>
+    <div style="flex:1;background:#141414;border-radius:12px;padding:16px;text-align:center;">
+      <div style="color:#d4a853;font-size:24px;font-weight:600;margin-bottom:4px;">~2min</div>
+      <div style="font-size:12px;color:#a0a0a0;">特征提取<br><span style="color:#666;">HuBERT</span></div>
+    </div>
+    <div style="color:#666;display:flex;align-items:center;">→</div>
+    <div style="flex:1;background:#141414;border-radius:12px;padding:16px;text-align:center;">
+      <div style="color:#d4a853;font-size:24px;font-weight:600;margin-bottom:4px;">~15min</div>
+      <div style="font-size:12px;color:#a0a0a0;">模型训练<br><span style="color:#666;">RVC 200 epochs</span></div>
+    </div>
+    <div style="color:#666;display:flex;align-items:center;">→</div>
+    <div style="flex:1;background:#141414;border-radius:12px;padding:16px;text-align:center;">
+      <div style="color:#d4a853;font-size:24px;font-weight:600;margin-bottom:4px;">可用!</div>
+      <div style="font-size:12px;color:#a0a0a0;">总计约 20min</div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>但 20 分钟等待体验不好——怎么破？</h3>
+</div>
+
+<div class="cards">
+  <div class="card" data-choice="progressive" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header" style="display:flex;align-items:center;gap:8px;">
+          <span style="background:#d4a853;width:8px;height:8px;border-radius:50%;"></span>
+          核心方案
+        </div>
+        <div class="mockup-body" style="padding:16px;">
+          <h3 style="color:#d4a853;">渐进式交付</h3>
+          <p style="font-size:12px;color:#a0a0a0;">不等到完美才给结果</p>
+          <div style="margin-top:12px;font-size:12px;color:#a0a0a0;line-height:1.8;">
+            <div style="display:flex;gap:12px;align-items:center;">
+              <span style="background:#22c55e;color:#000;padding:1px 8px;border-radius:4px;font-size:10px;">2min</span>
+              <span>快速预览版（20 epochs）→ 音色可辨认</span>
+            </div>
+            <div style="display:flex;gap:12px;align-items:center;">
+              <span style="background:#f59e0b;color:#000;padding:1px 8px;border-radius:4px;font-size:10px;">8min</span>
+              <span>标准版（100 epochs）→ 腔调初步保留</span>
+            </div>
+            <div style="display:flex;gap:12px;align-items:center;">
+              <span style="background:#d4a853;color:#000;padding:1px 8px;border-radius:4px;font-size:10px;">20min</span>
+              <span>精品版（200 epochs）→ 腔调细节到位</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <p>用户上传后 2 分钟就能听到第一版结果（音色已像）。然后边听边让模型继续训练。三个质量档位逐步解锁，用户可以随时"取用当前版本"开始创作。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="background" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">体验增强</div>
+        <div class="mockup-body" style="padding:16px;">
+          <h3>后台训练 + 通知</h3>
+          <p style="font-size:12px;color:#a0a0a0;">不盯着进度条</p>
+          <div style="margin-top:12px;font-size:12px;color:#a0a0a0;">
+            <p>上传完就可以<b>离开页面</b>，甚至可以先去做器乐生成。训练完成后站内通知 + 可选邮件通知。</p>
+            <p style="margin-top:8px;color:#666;">Celery Worker 已经在处理音频任务，RVC 训练同样走异步队列。</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <p>利用现有的 Celery + Redis 异步任务架构。训练任务入队后用户自由操作，不阻塞。训练完成的消息推送到前端。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="few-shot" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">辅助加速</div>
+        <div class="mockup-body" style="padding:16px;">
+          <h3>少量样本快速模式</h3>
+          <p style="font-size:12px;color:#a0a0a0;">30秒音频即可起步</p>
+          <div style="margin-top:12px;font-size:12px;color:#a0a0a0;">
+            <p>基于预训练的 RVC 基础模型做微调，<b>30秒干声就能出效果</b>。训练 2-3 分钟即可得到初版。</p>
+            <p style="margin-top:8px;color:#f59e0b;">代价：腔调保留不如完整训练</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <p>预训练 RVC checkpoint 作为起点，大幅减少所需训练数据和时间。适合"快速尝鲜"场景，后续可以补充更多音频精调。</p>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>实际用户时间感知</h3>
+  <div class="mockup">
+    <div class="mockup-body" style="padding:20px;">
+      <div style="display:flex;gap:20px;">
+        <div style="flex:1;">
+          <p style="color:#666;font-size:10px;letter-spacing:0.15em;margin-bottom:8px;">传统做法（差）</p>
+          <div style="background:#141414;padding:16px;border-radius:8px;font-size:13px;line-height:1.8;color:#a0a0a0;">
+            上传 → ⏳等待 20min → OK 可以用
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;color:#d4a853;font-size:24px;">→</div>
+        <div style="flex:1;">
+          <p style="color:#d4a853;font-size:10px;letter-spacing:0.15em;margin-bottom:8px;">优化做法（好）</p>
+          <div style="background:#141414;padding:16px;border-radius:8px;font-size:13px;line-height:1.8;color:#a0a0a0;">
+            上传 → <span style="color:#22c55e;">2min 初版可试</span> → 边听边训练 → <span style="color:#d4a853;">20min 精品可导出</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

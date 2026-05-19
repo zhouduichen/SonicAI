@@ -1,0 +1,111 @@
+<h2>设计 Section 2：数据模型 & API</h2>
+<p class="subtitle">Phase 1 新增的数据表和接口</p>
+
+<div class="section">
+  <h3>新增数据模型</h3>
+  <div style="background:#141414;border-radius:12px;padding:20px;margin-top:12px;font-family:monospace;font-size:12px;line-height:1.8;">
+    <p style="color:#666;margin-bottom:12px;"># VoiceModel — 声音模型</p>
+    <div style="color:#a0a0a0;">
+      <span style="color:#d4a853;">id</span>: UUID<br>
+      <span style="color:#d4a853;">user_id</span>: FK → User<br>
+      <span style="color:#d4a853;">name</span>: str (用户命名的声音名称，如 "我的原声")<br>
+      <span style="color:#d4a853;">source_audio_id</span>: FK → AudioAsset (训练的源音频)<br>
+      <span style="color:#d4a853;">checkpoint_path</span>: str (RVC 模型权重文件路径)<br>
+      <span style="color:#d4a853;">config_path</span>: str (RVC 模型配置文件)<br>
+      <span style="color:#d4a853;">status</span>: enum[pending, preprocessing, training, ready, failed]<br>
+      <span style="color:#d4a853;">epoch</span>: int (当前训练到第几个 epoch)<br>
+      <span style="color:#d4a853;">quality_tier</span>: enum[preview, standard, premium]<br>
+      <span style="color:#d4a853;">duration_seconds</span>: float (训练音频总时长)<br>
+      <span style="color:#d4a853;">created_at, updated_at</span>
+    </div>
+  </div>
+
+  <div style="background:#141414;border-radius:12px;padding:20px;margin-top:16px;font-family:monospace;font-size:12px;line-height:1.8;">
+    <p style="color:#666;margin-bottom:12px;"># VocalGeneration — 人声生成记录</p>
+    <div style="color:#a0a0a0;">
+      <span style="color:#d4a853;">id</span>: UUID<br>
+      <span style="color:#d4a853;">user_id</span>: FK → User<br>
+      <span style="color:#d4a853;">voice_model_id</span>: FK → VoiceModel<br>
+      <span style="color:#d4a853;">reference_audio_id</span>: FK → AudioAsset (参考人声，用户的演唱)<br>
+      <span style="color:#d4a853;">output_path</span>: str (生成的人声文件路径)<br>
+      <span style="color:#d4a853;">status</span>: enum[pending, processing, completed, failed]<br>
+      <span style="color:#d4a853;">duration_seconds</span>: float<br>
+      <span style="color:#d4a853;">created_at</span>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>新增 API 端点</h3>
+  <table style="width:100%;border-collapse:collapse;margin-top:12px;">
+    <tr style="border-bottom:1px solid #262626;">
+      <th style="text-align:left;padding:10px;color:#a0a0a0;">方法</th>
+      <th style="text-align:left;padding:10px;color:#a0a0a0;">路径</th>
+      <th style="text-align:left;padding:10px;color:#a0a0a0;">说明</th>
+      <th style="text-align:left;padding:10px;color:#a0a0a0;">认证</th>
+    </tr>
+    <tr style="border-bottom:1px solid #1f1f1f;">
+      <td style="padding:10px;color:#22c55e;">POST</td>
+      <td style="padding:10px;font-family:monospace;font-size:12px;">/api/v1/voice/train</td>
+      <td style="padding:10px;font-size:13px;">提交声音训练任务（传入已上传的音频ID）</td>
+      <td style="padding:10px;color:#a0a0a0;">JWT</td>
+    </tr>
+    <tr style="border-bottom:1px solid #1f1f1f;">
+      <td style="padding:10px;color:#60a5fa;">GET</td>
+      <td style="padding:10px;font-family:monospace;font-size:12px;">/api/v1/voice/status/{model_id}</td>
+      <td style="padding:10px;font-size:13px;">查询训练进度（epoch数、当前质量档位）</td>
+      <td style="padding:10px;color:#a0a0a0;">JWT</td>
+    </tr>
+    <tr style="border-bottom:1px solid #1f1f1f;">
+      <td style="padding:10px;color:#60a5fa;">GET</td>
+      <td style="padding:10px;font-family:monospace;font-size:12px;">/api/v1/voice/models</td>
+      <td style="padding:10px;font-size:13px;">获取用户的所有声音模型列表</td>
+      <td style="padding:10px;color:#a0a0a0;">JWT</td>
+    </tr>
+    <tr style="border-bottom:1px solid #1f1f1f;">
+      <td style="padding:10px;color:#ef4444;">DELETE</td>
+      <td style="padding:10px;font-family:monospace;font-size:12px;">/api/v1/voice/models/{model_id}</td>
+      <td style="padding:10px;font-size:13px;">删除声音模型及文件</td>
+      <td style="padding:10px;color:#a0a0a0;">JWT</td>
+    </tr>
+    <tr style="border-bottom:1px solid #1f1f1f;">
+      <td style="padding:10px;color:#22c55e;">POST</td>
+      <td style="padding:10px;font-family:monospace;font-size:12px;">/api/v1/voice/sing</td>
+      <td style="padding:10px;font-size:13px;">用人声模型 + 参考音频生成歌声</td>
+      <td style="padding:10px;color:#a0a0a0;">JWT</td>
+    </tr>
+    <tr>
+      <td style="padding:10px;color:#60a5fa;">GET</td>
+      <td style="padding:10px;font-family:monospace;font-size:12px;">/api/v1/voice/generations</td>
+      <td style="padding:10px;font-size:13px;">获取人声生成历史列表</td>
+      <td style="padding:10px;color:#a0a0a0;">JWT</td>
+    </tr>
+  </table>
+</div>
+
+<div class="section">
+  <h3>训练请求体示例</h3>
+  <div style="background:#0d0d0d;border-radius:8px;padding:16px;font-family:monospace;font-size:12px;color:#a0a0a0;line-height:1.6;">
+    <span style="color:#666;">POST /api/v1/voice/train</span><br>
+    {<br>
+    &nbsp;&nbsp;<span style="color:#d4a853;">"audio_asset_id"</span>: "uuid-of-uploaded-song",<br>
+    &nbsp;&nbsp;<span style="color:#d4a853;">"name"</span>: "我的声音",<br>
+    &nbsp;&nbsp;<span style="color:#d4a853;">"quality_target"</span>: "premium"  <span style="color:#666;">// preview | standard | premium</span><br>
+    }<br><br>
+    <span style="color:#666;">→ Celery Task: train_voice_model.delay(...)</span><br>
+    <span style="color:#666;">→ 返回: { "model_id": "...", "status": "preprocessing" }</span>
+  </div>
+</div>
+
+<div class="section">
+  <h3>生成请求体示例</h3>
+  <div style="background:#0d0d0d;border-radius:8px;padding:16px;font-family:monospace;font-size:12px;color:#a0a0a0;line-height:1.6;">
+    <span style="color:#666;">POST /api/v1/voice/sing</span><br>
+    {<br>
+    &nbsp;&nbsp;<span style="color:#d4a853;">"voice_model_id"</span>: "uuid-of-trained-model",<br>
+    &nbsp;&nbsp;<span style="color:#d4a853;">"reference_audio_id"</span>: "uuid-of-sung-reference"<br>
+    }<br><br>
+    <span style="color:#666;">→ Celery Task: infer_rvc_vocals.delay(...)</span><br>
+    <span style="color:#666;">→ 返回: { "generation_id": "...", "status": "processing" }</span>
+  </div>
+</div>

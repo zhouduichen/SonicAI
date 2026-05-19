@@ -1,0 +1,65 @@
+<h2>音色 vs 腔调 — 技术能做到什么程度？</h2>
+<p class="subtitle">"腔调"是指歌手独特的唱法：气声、颤音、咬字、哭腔、转音、断句节奏等</p>
+
+<div class="section">
+  <h3>声音克隆的三个层次</h3>
+  <table style="width:100%;border-collapse:collapse;margin-top:16px;">
+    <thead>
+      <tr style="border-bottom:1px solid #262626;">
+        <th style="text-align:left;padding:12px;color:#a0a0a0;">层次</th>
+        <th style="text-align:left;padding:12px;color:#a0a0a0;">含义</th>
+        <th style="text-align:left;padding:12px;color:#a0a0a0;">开源方案</th>
+        <th style="text-align:left;padding:12px;color:#a0a0a0;">成熟度</th>
+      </tr>
+      <tr style="border-bottom:1px solid #1f1f1f;">
+        <td style="padding:14px 12px;color:#d4a853;font-weight:600;">L1 音色克隆</td>
+        <td style="padding:14px 12px;">这个声音"听起来像谁"<br><span style="color:#666;font-size:0.8rem;">声纹特征、发声基频</span></td>
+        <td style="padding:14px 12px;">RVC, So-VITS-SVC, OpenVoice</td>
+        <td style="padding:14px 12px;color:#4ade80;">成熟</td>
+      </tr>
+      <tr style="border-bottom:1px solid #1f1f1f;">
+        <td style="padding:14px 12px;color:#d4a853;font-weight:600;">L2 唱法迁移</td>
+        <td style="padding:14px 12px;">这个人"怎么唱"<br><span style="color:#666;font-size:0.8rem;">颤音频率、气声比例、转音习惯、断句风格</span></td>
+        <td style="padding:14px 12px;">DiffSinger + 表现力参数, RVC 参考人声</td>
+        <td style="padding:14px 12px;color:#f59e0b;">部分可行</td>
+      </tr>
+      <tr style="border-bottom:1px solid #1f1f1f;">
+        <td style="padding:14px 12px;color:#d4a853;font-weight:600;">L3 情感演绎</td>
+        <td style="padding:14px 12px;">这首歌"怎么表达情感"<br><span style="color:#666;font-size:0.8rem;">强弱变化、即兴处理、演唱力度曲线</span></td>
+        <td style="padding:14px 12px;">目前依赖人工标注或参考音频</td>
+        <td style="padding:14px 12px;color:#ef4444;">早期阶段</td>
+      </tr>
+    </table>
+  </div>
+</div>
+
+<div class="section">
+  <h3>腔调克隆的核心原理</h3>
+  <div class="split">
+    <div class="mockup">
+      <div class="mockup-header">方法 1：参考人声驱动</div>
+      <div class="mockup-body" style="padding:16px;font-size:13px;">
+        <p style="color:#d4a853;margin-bottom:8px;">效果更好</p>
+        <p>用户需要自己唱一遍（或找一个会唱的人），<b>把腔调唱出来</b>。SVC 模型将这个"有腔调的演唱"的音色替换为目标声音，但<b>保留唱法特征</b>。</p>
+        <div style="background:#141414;padding:10px;border-radius:8px;margin-top:10px;font-size:12px;color:#a0a0a0;">
+          你唱 → 提取旋律+腔调 → SVC 替换成目标声音 → 输出：他的音色 + 你的腔调
+        </div>
+      </div>
+    </div>
+    <div class="mockup">
+      <div class="mockup-header">方法 2：参数合成</div>
+      <div class="mockup-body" style="padding:16px;font-size:13px;">
+        <p style="color:#a0a0a0;margin-bottom:8px;">更自动化但不够自然</p>
+        <p>用 MIDI + 歌词直接驱动 DiffSinger，通过<b>滑音、颤音、力度</b>等参数模拟腔调。不需要人唱参考，但参数调教需要技巧。</p>
+        <div style="background:#141414;padding:10px;border-radius:8px;margin-top:10px;font-size:12px;color:#a0a0a0;">
+          MIDI+歌词 → DiffSinger 参数化合成 → 输出：AI音色 + 参数控制的腔调
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>实际效果参考</h3>
+  <p style="color:#a0a0a0;">B站搜索 "AI孙燕姿" "AI周杰伦" 可以看到 L1+L2 的实际效果。音色相似度可达 85-90%，腔调相似度取决于参考音频质量，通常 60-80%。</p>
+</div>

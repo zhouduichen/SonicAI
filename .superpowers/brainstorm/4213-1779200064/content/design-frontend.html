@@ -1,0 +1,128 @@
+<h2>设计 Section 4：前端 UI 变化</h2>
+<p class="subtitle">Phase 1 新增和修改的前端组件</p>
+
+<div class="section">
+  <h3>侧边导航 — 新增"声音"入口</h3>
+  <div style="background:#141414;border-radius:12px;padding:20px;margin-top:12px;">
+    <div style="display:flex;gap:16px;">
+      <div style="width:200px;background:#0d0d0d;border-radius:8px;padding:12px;">
+        <div style="color:#666;font-size:10px;letter-spacing:0.1em;">LOGO</div>
+        <div style="margin-top:20px;display:flex;flex-direction:column;gap:4px;">
+          <div style="padding:8px 12px;border-radius:8px;color:#a0a0a0;font-size:12px;">探索</div>
+          <div style="padding:8px 12px;border-radius:8px;color:#a0a0a0;font-size:12px;">创作</div>
+          <div style="padding:8px 12px;border-radius:8px;background:#1c1c1c;color:#d4a853;font-size:12px;border-left:2px solid #d4a853;">声音 ✦</div>
+          <div style="padding:8px 12px;border-radius:8px;color:#a0a0a0;font-size:12px;">曲库</div>
+        </div>
+      </div>
+      <div style="flex:1;">
+        <p style="font-size:13px;color:#a0a0a0;">"声音"视图切换 Sidebar 内容区，显示两个子面板：</p>
+        <div style="display:flex;gap:8px;margin-top:12px;">
+          <span style="background:#1c1c1c;padding:6px 12px;border-radius:6px;font-size:11px;color:#d4a853;">我的声音模型</span>
+          <span style="background:#141414;padding:6px 12px;border-radius:6px;font-size:11px;color:#a0a0a0;">生成人声</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>新增组件 1：VoiceTrainingWizard</h3>
+  <div class="mockup">
+    <div class="mockup-header">声音模型训练向导</div>
+    <div class="mockup-body" style="padding:20px;">
+      <div style="display:flex;gap:16px;align-items:flex-start;">
+        <div style="flex:1;text-align:center;">
+          <div style="width:32px;height:32px;border-radius:50%;background:#d4a853;color:#000;display:flex;align-items:center;justify-content:center;margin:0 auto 8px;font-size:12px;font-weight:600;">1</div>
+          <p style="font-size:11px;color:#a0a0a0;">选择歌曲</p>
+          <p style="font-size:10px;color:#666;">从已上传或新上传</p>
+        </div>
+        <div style="color:#262626;padding-top:12px;">→</div>
+        <div style="flex:1;text-align:center;">
+          <div style="width:32px;height:32px;border-radius:50%;background:#262626;color:#666;display:flex;align-items:center;justify-content:center;margin:0 auto 8px;font-size:12px;font-weight:600;">2</div>
+          <p style="font-size:11px;color:#a0a0a0;">命名模型</p>
+          <p style="font-size:10px;color:#666;">给声音起个名字</p>
+        </div>
+        <div style="color:#262626;padding-top:12px;">→</div>
+        <div style="flex:1;text-align:center;">
+          <div style="width:32px;height:32px;border-radius:50%;background:#262626;color:#666;display:flex;align-items:center;justify-content:center;margin:0 auto 8px;font-size:12px;font-weight:600;">3</div>
+          <p style="font-size:11px;color:#a0a0a0;">开始训练</p>
+          <p style="font-size:10px;color:#666;">选择质量目标</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>新增组件 2：VoiceModelCard（渐进式训练进度）</h3>
+  <div class="mockup">
+    <div class="mockup-header">声音模型卡片 — 训练中状态</div>
+    <div class="mockup-body" style="padding:20px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;">
+        <div>
+          <h4 style="margin:0;font-size:16px;">🎤 我的声音</h4>
+          <p style="color:#666;font-size:11px;margin-top:4px;">来自 "夜曲.mp3" · 训练中</p>
+        </div>
+        <span style="background:rgba(212,168,83,0.12);color:#d4a853;padding:4px 10px;border-radius:9999px;font-size:10px;">45/200 epoch</span>
+      </div>
+      <div style="background:#262626;border-radius:4px;height:4px;margin-bottom:16px;">
+        <div style="background:#d4a853;width:22%;height:100%;border-radius:4px;"></div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <span style="background:#22c55e;color:#000;padding:2px 8px;border-radius:4px;font-size:10px;">✓ Preview 可用</span>
+        <span style="background:#1c1c1c;color:#666;padding:2px 8px;border-radius:4px;font-size:10px;">Standard 预计 5min</span>
+        <span style="background:#1c1c1c;color:#666;padding:2px 8px;border-radius:4px;font-size:10px;">Premium 预计 15min</span>
+      </div>
+      <div style="margin-top:12px;">
+        <button class="mock-button" style="background:#d4a853;color:#000;border:none;padding:8px 16px;border-radius:9999px;font-size:11px;">使用 Preview 版本</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>新增组件 3：VocalGenPanel</h3>
+  <div class="mockup">
+    <div class="mockup-header">人声生成面板</div>
+    <div class="mockup-body" style="padding:20px;">
+      <div style="margin-bottom:16px;">
+        <p style="font-size:11px;color:#a0a0a0;margin-bottom:6px;">选择声音模型</p>
+        <div style="background:#0d0d0d;padding:12px;border-radius:8px;display:flex;gap:8px;">
+          <span style="background:rgba(212,168,83,0.12);color:#d4a853;padding:6px 12px;border-radius:9999px;font-size:11px;">我的声音 ✓</span>
+          <span style="background:#141414;color:#a0a0a0;padding:6px 12px;border-radius:9999px;font-size:11px;">另一个声音</span>
+          <span style="background:#141414;color:#666;padding:6px 12px;border-radius:9999px;font-size:11px;">+ 新建模型</span>
+        </div>
+      </div>
+      <div style="margin-bottom:16px;">
+        <p style="font-size:11px;color:#a0a0a0;margin-bottom:6px;">上传参考人声（你唱的歌）</p>
+        <div style="border:1px dashed #262626;border-radius:12px;padding:32px;text-align:center;">
+          <p style="color:#666;font-size:12px;">拖拽或点击上传你演唱的音频</p>
+          <p style="color:#444;font-size:10px;margin-top:4px;">AI 保留你的腔调，替换为目标声音</p>
+        </div>
+      </div>
+      <button class="mock-button" style="background:#d4a853;color:#000;border:none;padding:12px 28px;border-radius:9999px;font-size:13px;font-weight:600;width:100%;">生成人声</button>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>修改的现有组件</h3>
+  <table style="width:100%;border-collapse:collapse;">
+    <tr style="border-bottom:1px solid #262626;">
+      <th style="text-align:left;padding:10px;color:#a0a0a0;font-size:12px;">组件</th>
+      <th style="text-align:left;padding:10px;color:#a0a0a0;font-size:12px;">修改内容</th>
+    </tr>
+    <tr style="border-bottom:1px solid #1f1f1f;">
+      <td style="padding:10px;font-size:12px;font-weight:600;">Sidebar.tsx</td>
+      <td style="padding:10px;font-size:12px;color:#a0a0a0;">新增 "声音" 导航项，对应 VoiceView 视图</td>
+    </tr>
+    <tr style="border-bottom:1px solid #1f1f1f;">
+      <td style="padding:10px;font-size:12px;font-weight:600;">MusicPlayer.tsx</td>
+      <td style="padding:10px;font-size:12px;color:#a0a0a0;">支持播放人声 + 伴奏分离的轨道切换</td>
+    </tr>
+    <tr>
+      <td style="padding:10px;font-size:12px;font-weight:600;">types/index.ts</td>
+      <td style="padding:10px;font-size:12px;color:#a0a0a0;">新增 VoiceModel, VocalGeneration 等 TypeScript 类型</td>
+    </tr>
+  </table>
+</div>

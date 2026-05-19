@@ -1,0 +1,71 @@
+<h2>声音克隆的版权与法律风险</h2>
+<p class="subtitle">SonicAI 作为商业产品必须考虑的问题</p>
+
+<div class="section">
+  <h3>三层法律问题</h3>
+  <table style="width:100%;border-collapse:collapse;margin-top:16px;">
+    <tr style="border-bottom:1px solid #262626;">
+      <th style="text-align:left;padding:12px;color:#a0a0a0;">层级</th>
+      <th style="text-align:left;padding:12px;color:#a0a0a0;">法律依据</th>
+      <th style="text-align:left;padding:12px;color:#a0a0a0;">风险</th>
+      <th style="text-align:left;padding:12px;color:#a0a0a0;">严重程度</th>
+    </tr>
+    <tr style="border-bottom:1px solid #1f1f1f;">
+      <td style="padding:14px 12px;font-weight:600;">声音权</td>
+      <td style="padding:14px 12px;font-size:13px;">《民法典》第1023条<br>声音参照肖像权保护</td>
+      <td style="padding:14px 12px;font-size:13px;">未经许可克隆他人声音 → 侵权</td>
+      <td style="padding:14px 12px;color:#ef4444;font-weight:600;">高</td>
+    </tr>
+    <tr style="border-bottom:1px solid #1f1f1f;">
+      <td style="padding:14px 12px;font-weight:600;">著作权</td>
+      <td style="padding:14px 12px;font-size:13px;">《著作权法》<br>词曲版权 + 录音制品版权</td>
+      <td style="padding:14px 12px;font-size:13px;">用受版权保护的歌曲做训练数据 / 生成输出 → 侵权</td>
+      <td style="padding:14px 12px;color:#f59e0b;">中</td>
+    </tr>
+    <tr style="border-bottom:1px solid #1f1f1f;">
+      <td style="padding:14px 12px;font-weight:600;">不正当竞争</td>
+      <td style="padding:14px 12px;font-size:13px;">《反不正当竞争法》<br>《互联网信息服务深度合成管理规定》</td>
+      <td style="padding:14px 12px;font-size:13px;">生成足以以假乱真的歌手声音 → 误导公众</td>
+      <td style="padding:14px 12px;color:#f59e0b;">中</td>
+    </tr>
+  </table>
+</div>
+
+<div class="section">
+  <h3>安全的产品设计路线</h3>
+  <div class="options">
+    <div class="option" data-choice="self-voice" onclick="toggleSelect(this)">
+      <div class="letter">A</div>
+      <div class="content">
+        <h3>仅限自有声音</h3>
+        <p>用户只能克隆<b>自己的声音</b>。通过声纹验证确保上传的音频来自用户本人——要求用户朗读/演唱一段随机短语，实时录音比对。这是最安全的方案，完全合规。</p>
+      </div>
+    </div>
+    <div class="option" data-choice="licensed" onclick="toggleSelect(this)">
+      <div class="letter">B</div>
+      <div class="content">
+        <h3>自有声音 + 授权声音库</h3>
+        <p>在 A 的基础上，额外提供一批<b>已签约授权的歌手声音</b>（DiffSinger 预置库）。用户可以使用这些授权声音。商业上需要与声音提供方分成。</p>
+      </div>
+    </div>
+    <div class="option" data-choice="open-platform" onclick="toggleSelect(this)">
+      <div class="letter">C</div>
+      <div class="content">
+        <h3>开放平台 + 严格审核</h3>
+        <p>允许上传任何声音，但实行<b>实名制 + 版权声明 + AI 水印嵌入 + 投诉下架机制</b>。类似于 YouTube Content ID 模式。风险较高但功能完整。</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>推荐策略：A→B 渐进式</h3>
+  <div class="mockup">
+    <div class="mockup-body" style="padding:20px;">
+      <p style="margin-bottom:12px;"><b style="color:#d4a853;">第一步（MVP）：</b>仅开放"克隆自己的声音"。用户必须通过声纹验证（实时录音比对）。这是法律上最安全的方案。</p>
+      <p style="color:#666;font-size:13px;margin-bottom:8px;">用户场景：我唱一首歌 → AI 把我的声音优化/美化后替换到生成的音乐中</p>
+      <p style="margin-bottom:12px;"><b style="color:#d4a853;">第二步（扩展）：</b>上线签约授权的声音库。与独立歌手/VTuber 合作分成，提供 10-20 个预置 AI 歌手。</p>
+      <p style="color:#666;font-size:13px;">额外保障：生成的所有音频嵌入不可感知的数字水印，便于溯源和版权争议处理。</p>
+    </div>
+  </div>
+</div>

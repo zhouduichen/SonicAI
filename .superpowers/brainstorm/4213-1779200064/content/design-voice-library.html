@@ -1,0 +1,127 @@
+<h2>设计 Section 4（修订）：VoiceModelLibrary 对齐 StyleLibrary</h2>
+<p class="subtitle">与现有风格库完全相同的交互规格：Double-Bezel卡片 + 列表选择 + 空状态</p>
+
+<div class="section">
+  <h3>StyleLibrary 规格 → VoiceModelLibrary 映射</h3>
+  <table style="width:100%;border-collapse:collapse;">
+    <tr style="border-bottom:1px solid #262626;">
+      <th style="text-align:left;padding:10px;color:#a0a0a0;font-size:12px;">StyleLibrary 元素</th>
+      <th style="text-align:left;padding:10px;color:#a0a0a0;font-size:12px;">VoiceModelLibrary 对应</th>
+    </tr>
+    <tr style="border-bottom:1px solid #1f1f1f;">
+      <td style="padding:10px;font-size:12px;">card-outer + card-inner</td>
+      <td style="padding:10px;font-size:12px;color:#a0a0a0;">完全相同</td>
+    </tr>
+    <tr style="border-bottom:1px solid #1f1f1f;">
+      <td style="padding:10px;font-size:12px;">Top deco (渐变线 + 菱形)</td>
+      <td style="padding:10px;font-size:12px;color:#a0a0a0;">完全相同</td>
+    </tr>
+    <tr style="border-bottom:1px solid #1f1f1f;">
+      <td style="padding:10px;font-size:12px;">eyebrow "第 2 步"</td>
+      <td style="padding:10px;font-size:12px;color:#a0a0a0;">eyebrow "声音模型"</td>
+    </tr>
+    <tr style="border-bottom:1px solid #1f1f1f;">
+      <td style="padding:10px;font-size:12px;">Playfair italic 标题 "风格标签库"</td>
+      <td style="padding:10px;font-size:12px;color:#a0a0a0;">Playfair italic 标题 "声音模型库"</td>
+    </tr>
+    <tr style="border-bottom:1px solid #1f1f1f;">
+      <td style="padding:10px;font-size:12px;">计数 "N 个风格"</td>
+      <td style="padding:10px;font-size:12px;color:#a0a0a0;">计数 "N 个声音"</td>
+    </tr>
+    <tr style="border-bottom:1px solid #1f1f1f;">
+      <td style="padding:10px;font-size:12px;">空状态：虚线菱形 + Playfair italic 提示</td>
+      <td style="padding:10px;font-size:12px;color:#a0a0a0;">空状态：虚线菱形麦克风图标 + "暂无声音模型"</td>
+    </tr>
+    <tr style="border-bottom:1px solid #1f1f1f;">
+      <td style="padding:10px;font-size:12px;">列表项：Disc图标 + 名称 + 向量维度</td>
+      <td style="padding:10px;font-size:12px;color:#a0a0a0;">列表项：Mic图标 + 名称 + 状态/质量档位</td>
+    </tr>
+    <tr style="border-bottom:1px solid #1f1f1f;">
+      <td style="padding:10px;font-size:12px;">选中态：accent底色 + 左边框 + "已选"chip</td>
+      <td style="padding:10px;font-size:12px;color:#a0a0a0;">选中态：accent底色 + 左边框 + 质量档位chip</td>
+    </tr>
+    <tr style="border-bottom:1px solid #1f1f1f;">
+      <td style="padding:10px;font-size:12px;">hover 显示删除按钮</td>
+      <td style="padding:10px;font-size:12px;color:#a0a0a0;">完全相同</td>
+    </tr>
+    <tr>
+      <td style="padding:10px;font-size:12px;">Bottom deco</td>
+      <td style="padding:10px;font-size:12px;color:#a0a0a0;">完全相同</td>
+    </tr>
+  </table>
+</div>
+
+<div class="section">
+  <h3>VoiceModelLibrary 列表项状态变体</h3>
+
+  <div class="mockup" style="margin-bottom:16px;">
+    <div class="mockup-header">训练中 — 显示进度</div>
+    <div class="mockup-body" style="padding:16px;">
+      <div style="display:flex;align-items:center;gap:12px;padding:8px 12px;background:rgba(212,168,83,0.04);border-left:2px solid #d4a853;border-radius:8px;">
+        <div style="width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;position:relative;">
+          <div style="width:28px;height:28px;border-radius:50%;border:2px solid #d4a853;border-top-color:transparent;animation:spin 1s linear infinite;"></div>
+        </div>
+        <div style="flex:1;">
+          <p style="font-size:13px;font-weight:600;color:#d4a853;">我的声音</p>
+          <div style="display:flex;align-items:center;gap:6px;margin-top:2px;">
+            <span style="font-size:10px;font-family:monospace;color:#666;">TRAINING</span>
+            <div style="width:60px;height:3px;background:#262626;border-radius:2px;">
+              <div style="width:35%;height:100%;background:#d4a853;border-radius:2px;"></div>
+            </div>
+            <span style="font-size:10px;font-family:monospace;color:#a0a0a0;">45/200 epoch</span>
+          </div>
+        </div>
+        <span style="font-size:10px;padding:3px 8px;border-radius:9999px;background:#22c55e;color:#000;">Preview可用</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="mockup" style="margin-bottom:16px;">
+    <div class="mockup-header">已完成 — 选中态</div>
+    <div class="mockup-body" style="padding:16px;">
+      <div style="display:flex;align-items:center;gap:12px;padding:8px 12px;background:rgba(212,168,83,0.08);border-left:2px solid #d4a853;border-radius:8px;">
+        <div style="width:32px;height:32px;border-radius:50%;background:rgba(212,168,83,0.12);border:1.5px solid #d4a853;display:flex;align-items:center;justify-content:center;">
+          <span style="font-size:14px;">🎤</span>
+        </div>
+        <div style="flex:1;">
+          <p style="font-size:13px;font-weight:600;color:#d4a853;">我的声音</p>
+          <p style="font-size:10px;font-family:monospace;color:#a0a0a0;">PREMIUM · 200 epochs · 2:30 素材</p>
+        </div>
+        <span style="font-size:10px;padding:3px 8px;border-radius:9999px;background:#d4a853;color:#000;">已选</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="mockup" style="margin-bottom:16px;">
+    <div class="mockup-header">已完成 — 未选中</div>
+    <div class="mockup-body" style="padding:16px;">
+      <div style="display:flex;align-items:center;gap:12px;padding:8px 12px;border:2px solid transparent;border-radius:8px;">
+        <div style="width:32px;height:32px;border-radius:50%;border:1px solid #262626;display:flex;align-items:center;justify-content:center;opacity:0.6;">
+          <span style="font-size:14px;">🎤</span>
+        </div>
+        <div style="flex:1;">
+          <p style="font-size:13px;font-weight:500;">另一个声音</p>
+          <p style="font-size:10px;font-family:monospace;color:#666;">STANDARD · 100 epochs · 1:15 素材</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mockup">
+    <div class="mockup-header">空状态</div>
+    <div class="mockup-body" style="padding:16px;">
+      <div style="text-align:center;padding:24px;">
+        <div style="width:48px;height:48px;margin:0 auto 12px;rotate:45deg;border:1.5px dashed #262626;display:flex;align-items:center;justify-content:center;">
+          <span style="rotate:-45deg;font-size:18px;">🎤</span>
+        </div>
+        <p style="font-size:13px;font-style:italic;color:#a0a0a0;font-family:'Playfair Display',serif;">暂无声音模型</p>
+        <p style="font-size:10px;font-family:monospace;color:#666;margin-top:4px;">上传歌曲训练你的专属声音</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>训练向导：也融入创作页流程</h3>
+  <p style="font-size:13px;color:#a0a0a0;">训练不是独立的"向导弹窗"，而是创作页的一个内嵌卡片（训练卡片），与现有 Dropzone / StyleLibrary / GenerationConsole 形成统一的列表布局，不需要新的页面或模态窗。</p>
+</div>

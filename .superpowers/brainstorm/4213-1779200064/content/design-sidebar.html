@@ -1,0 +1,97 @@
+<h2>侧边栏新增 "声音模型库" 导航项</h2>
+<p class="subtitle">与创作工作室、风格库、生成记录完全平级</p>
+
+<div class="section">
+  <h3>现有侧边栏（左）→ 新增后（右）</h3>
+  <div class="split">
+    <div class="mockup">
+      <div class="mockup-header">现在</div>
+      <div class="mockup-body" style="padding:0;">
+        <div style="width:200px;background:#141414;padding:12px 0;font-size:11px;">
+          <div style="padding:12px 16px;color:#666;">HOME · 首页</div>
+          <div style="margin:8px 0;height:1px;background:#262626;"></div>
+          <div style="padding:10px 16px;color:#a0a0a0;">STUDIO · 创作工作室</div>
+          <div style="padding:10px 16px;color:#a0a0a0;">LIBRARY · 风格库</div>
+          <div style="padding:10px 16px;color:#a0a0a0;">ARCHIVE · 生成记录</div>
+        </div>
+      </div>
+    </div>
+    <div class="mockup">
+      <div class="mockup-header" style="display:flex;align-items:center;gap:6px;">
+        <span style="background:#d4a853;color:#000;padding:1px 6px;border-radius:9999px;font-size:8px;">NEW</span>
+        新增后
+      </div>
+      <div class="mockup-body" style="padding:0;">
+        <div style="width:200px;background:#141414;padding:12px 0;font-size:11px;">
+          <div style="padding:12px 16px;color:#666;">HOME · 首页</div>
+          <div style="margin:8px 0;height:1px;background:#262626;"></div>
+          <div style="padding:10px 16px;color:#a0a0a0;">STUDIO · 创作工作室</div>
+          <div style="padding:10px 16px;color:#a0a0a0;">LIBRARY · 风格库</div>
+          <div style="padding:10px 16px;background:#1c1c1c;border-left:2px solid #d4a853;color:#d4a853;">VOICE · 声音模型库</div>
+          <div style="padding:10px 16px;color:#a0a0a0;">ARCHIVE · 生成记录</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>点击 "声音模型库" → 显示 VoiceModelLibrary 卡片</h3>
+  <p style="font-size:12px;color:#a0a0a0;margin-bottom:16px;">和其他 Tab 一样，独立视图，只显示一张 VoiceModelLibrary 卡片</p>
+  <div style="border:1px solid #262626;border-radius:24px;padding:5px;background:rgba(255,255,255,0.03);max-width:600px;">
+    <div style="background:#141414;border-radius:20px;padding:24px;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+        <div style="flex:1;height:1px;background:linear-gradient(to right, #d4a853, transparent);"></div>
+        <div style="width:6px;height:6px;rotate:45deg;background:#d4a853;opacity:0.4;"></div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:10px;background:rgba(212,168,83,0.08);color:#d4a853;padding:4px 12px;border-radius:9999px;font-family:monospace;letter-spacing:0.15em;">声音模型</span>
+          <h3 style="font-size:18px;font-style:italic;font-weight:500;color:#f2f2f2;font-family:serif;">声音模型库</h3>
+        </div>
+        <span style="font-size:10px;font-family:monospace;color:#666;letter-spacing:0.15em;">2 个声音</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:2px;">
+        <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:rgba(212,168,83,0.08);border-left:2px solid #d4a853;border-radius:8px;">
+          <div style="width:32px;height:32px;border-radius:50%;background:rgba(212,168,83,0.12);border:1.5px solid #d4a853;display:flex;align-items:center;justify-content:center;">🎤</div>
+          <div style="flex:1;"><p style="font-size:14px;font-weight:500;color:#d4a853;">我的声音</p><p style="font-size:10px;font-family:monospace;color:#a0a0a0;">Premium · 200 epochs</p></div>
+          <span style="font-size:10px;font-family:monospace;background:#d4a853;color:#0d0d0d;padding:3px 10px;border-radius:9999px;">已选</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-left:2px solid transparent;border-radius:8px;">
+          <div style="width:32px;height:32px;border-radius:50%;border:1px solid #262626;display:flex;align-items:center;justify-content:center;opacity:0.5;">🎤</div>
+          <div style="flex:1;"><p style="font-size:14px;font-weight:500;color:#f2f2f2;">另一个声音</p><p style="font-size:10px;font-family:monospace;color:#666;">Standard · 100 epochs</p></div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
+        <div style="width:6px;height:6px;rotate:45deg;background:#d4a853;opacity:0.4;"></div>
+        <div style="flex:1;height:1px;background:linear-gradient(to left, #d4a853, transparent);"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>代码改动清单</h3>
+  <table style="width:100%;border-collapse:collapse;">
+    <tr style="border-bottom:1px solid #262626;">
+      <th style="text-align:left;padding:10px;color:#a0a0a0;">文件</th>
+      <th style="text-align:left;padding:10px;color:#a0a0a0;">改动</th>
+    </tr>
+    <tr style="border-bottom:1px solid #1f1f1f;">
+      <td style="padding:10px;font-size:12px;font-weight:600;">Sidebar.tsx</td>
+      <td style="padding:10px;font-size:12px;color:#a0a0a0;">加 1 个 navItem: <code style="color:#d4a853;">{ id: "voice", label: "VOICE", sub: "声音模型库", icon: Microphone }</code></td>
+    </tr>
+    <tr style="border-bottom:1px solid #1f1f1f;">
+      <td style="padding:10px;font-size:12px;font-weight:600;">create/page.tsx</td>
+      <td style="padding:10px;font-size:12px;color:#a0a0a0;">加 1 个 tab: <code style="color:#d4a853;">activeTab === "voice" && &lt;VoiceModelLibrary /&gt;</code></td>
+    </tr>
+    <tr style="border-bottom:1px solid #1f1f1f;">
+      <td style="padding:10px;font-size:12px;font-weight:600;">VoiceModelLibrary.tsx</td>
+      <td style="padding:10px;font-size:12px;color:#22c55e;">新增 — 以 StyleLibrary.tsx 复制，改 10 处文字/类型</td>
+    </tr>
+    <tr>
+      <td style="padding:10px;font-size:12px;font-weight:600;">types/index.ts</td>
+      <td style="padding:10px;font-size:12px;color:#a0a0a0;">加 VoiceModel 类型</td>
+    </tr>
+  </table>
+</div>

@@ -1,0 +1,84 @@
+<h2>三个实现方案</h2>
+<p class="subtitle">从简单到完整，选择适合的节奏</p>
+
+<div class="options">
+  <div class="option" data-choice="minimal" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>最小可行 — 纯 RVC 克隆</h3>
+      <p style="color:#a0a0a0;">只做声音克隆的核心链路</p>
+      <div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:6px;">
+        <span style="background:#141414;color:#a0a0a0;padding:4px 10px;border-radius:6px;font-size:11px;">RVC训练</span>
+        <span style="background:#141414;color:#a0a0a0;padding:4px 10px;border-radius:6px;font-size:11px;">RVC推理</span>
+        <span style="background:#141414;color:#a0a0a0;padding:4px 10px;border-radius:6px;font-size:11px;">声纹验证</span>
+        <span style="background:#141414;color:#a0a0a0;padding:4px 10px;border-radius:6px;font-size:11px;">人声分离</span>
+      </div>
+      <div style="margin-top:12px;font-size:12px;">
+        <span style="color:#666;">预期工作量</span> <span style="color:#a0a0a0;">后端 3-4 天 + 前端 2 天</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="full" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>完整人声平台</h3>
+      <p style="color:#a0a0a0;">RVC + DiffSinger + 歌词编辑器 + 混音</p>
+      <div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:6px;">
+        <span style="background:#141414;color:#a0a0a0;padding:4px 10px;border-radius:6px;font-size:11px;">RVC全套</span>
+        <span style="background:#141414;color:#a0a0a0;padding:4px 10px;border-radius:6px;font-size:11px;">DiffSinger预置库</span>
+        <span style="background:#141414;color:#a0a0a0;padding:4px 10px;border-radius:6px;font-size:11px;">歌词编辑器</span>
+        <span style="background:#141414;color:#a0a0a0;padding:4px 10px;border-radius:6px;font-size:11px;">人声+伴奏混音</span>
+        <span style="background:#141414;color:#a0a0a0;padding:4px 10px;border-radius:6px;font-size:11px;">数字水印</span>
+      </div>
+      <div style="margin-top:12px;font-size:12px;">
+        <span style="color:#666;">预期工作量</span> <span style="color:#a0a0a0;">后端 6-8 天 + 前端 4-5 天</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="phased" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>分阶段推进（推荐）</h3>
+      <p style="color:#a0a0a0;">先做核心链路验证，再逐步扩展</p>
+      <div style="margin-top:12px;font-size:12px;line-height:1.8;">
+        <div style="margin-bottom:8px;">
+          <span style="background:#d4a853;color:#000;padding:2px 8px;border-radius:4px;font-size:10px;">Phase 1</span>
+          <span style="margin-left:8px;">RVC 核心链路：人声分离 → 训练 → 推理。用户可以克隆自己声音并生成唱歌。</span>
+        </div>
+        <div style="margin-bottom:8px;">
+          <span style="background:#60a5fa;color:#000;padding:2px 8px;border-radius:4px;font-size:10px;">Phase 2</span>
+          <span style="margin-left:8px;">歌词编辑器 + 人声/伴奏混音 + 数字水印。完善创作体验。</span>
+        </div>
+        <div>
+          <span style="background:#a78bfa;color:#000;padding:2px 8px;border-radius:4px;font-size:10px;">Phase 3</span>
+          <span style="margin-left:8px;">DiffSinger 预置 AI 歌手 + 授权声音库 + 歌手分成系统。</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>推荐理由：分阶段推进</h3>
+  <div class="pros-cons">
+    <div class="pros">
+      <h4>为什么选 C</h4>
+      <ul>
+        <li>Phase 1 可快速验证声音克隆链路是否走得通</li>
+        <li>每个阶段都有可交付的成果</li>
+        <li>Phase 3（授权歌手）可以在 Phase 1 跑通后提前启动商务谈判</li>
+        <li>如果某个阶段遇到技术障碍，不影响其他部分</li>
+      </ul>
+    </div>
+    <div class="cons">
+      <h4>需要注意</h4>
+      <ul>
+        <li>总工期比一次做完更长</li>
+        <li>需要在 Phase 1 就给后续阶段留好扩展点</li>
+        <li>用户可能期待"一步到位"的完整人声体验</li>
+      </ul>
+    </div>
+  </div>
+</div>

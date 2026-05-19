@@ -1,0 +1,90 @@
+<h2>三个开源 SVC 方案对比</h2>
+<p class="subtitle">筛选标准：可学习歌曲风格（腔调）、中文生态成熟、RTX 5080 16G 可运行</p>
+
+<div class="cards">
+  <div class="card" data-choice="rvc" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header" style="display:flex;align-items:center;gap:8px;">
+          <span style="background:#22c55e;width:8px;height:8px;border-radius:50%;display:inline-block;"></span>
+          推荐方案
+        </div>
+        <div class="mockup-body" style="padding:16px;">
+          <h3 style="color:#d4a853;">RVC</h3>
+          <p style="color:#a0a0a0;font-size:12px;">Retrieval-based Voice Conversion</p>
+          <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px;font-size:12px;">
+            <div style="display:flex;justify-content:space-between;"><span style="color:#666;">成熟度</span><span style="color:#4ade80;">极高</span></div>
+            <div style="display:flex;justify-content:space-between;"><span style="color:#666;">训练速度</span><span style="color:#d4a853;">10-30min</span></div>
+            <div style="display:flex;justify-content:space-between;"><span style="color:#666;">所需音频</span><span style="color:#a0a0a0;">10min干声</span></div>
+            <div style="display:flex;justify-content:space-between;"><span style="color:#666;">腔调保留</span><span style="color:#4ade80;">取决于参考人声</span></div>
+            <div style="display:flex;justify-content:space-between;"><span style="color:#666;">中文社区</span><span style="color:#4ade80;">最活跃</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <p>GitHub 58k+ stars。AI孙燕姿/AI周杰伦背后的核心技术。通过 HuBERT 分离音色和内容，替换音色时保留原始演唱的腔调（颤音、转音、力度）。作为"学习歌曲风格"的主力方案。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="diffsinger" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">预置歌手方案</div>
+        <div class="mockup-body" style="padding:16px;">
+          <h3 style="color:#60a5fa;">DiffSinger</h3>
+          <p style="color:#a0a0a0;font-size:12px;">Diffusion-based Singing Synthesis</p>
+          <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px;font-size:12px;">
+            <div style="display:flex;justify-content:space-between;"><span style="color:#666;">成熟度</span><span style="color:#4ade80;">高</span></div>
+            <div style="display:flex;justify-content:space-between;"><span style="color:#666;">推理速度</span><span style="color:#4ade80;">快 (秒级)</span></div>
+            <div style="display:flex;justify-content:space-between;"><span style="color:#666;">输入方式</span><span style="color:#a0a0a0;">MIDI+歌词</span></div>
+            <div style="display:flex;justify-content:space-between;"><span style="color:#666;">腔调控制</span><span style="color:#f59e0b;">参数化（需要调教）</span></div>
+            <div style="display:flex;justify-content:space-between;"><span style="color:#666;">开源生态</span><span style="color:#4ade80;">OpenVPI社区</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <p>OpenVPI 开源社区维护。用扩散模型从零合成歌声，支持颤音、气声、力度等参数显式控制。社区有大量预训练的 AI 歌手供下载。适合作为"预置 AI 歌手库"的底座。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="gpt-sovits" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">快速克隆方案</div>
+        <div class="mockup-body" style="padding:16px;">
+          <h3 style="color:#a78bfa;">GPT-SoVITS</h3>
+          <p style="color:#a0a0a0;font-size:12px;">GPT + SoVITS 联合架构</p>
+          <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px;font-size:12px;">
+            <div style="display:flex;justify-content:space-between;"><span style="color:#666;">成熟度</span><span style="color:#f59e0b;">中高</span></div>
+            <div style="display:flex;justify-content:space-between;"><span style="color:#666;">训练速度</span><span style="color:#4ade80;">快（分钟级）</span></div>
+            <div style="display:flex;justify-content:space-between;"><span style="color:#666;">所需音频</span><span style="color:#4ade80;">仅需 5-30秒</span></div>
+            <div style="display:flex;justify-content:space-between;"><span style="color:#666;">唱歌支持</span><span style="color:#f59e0b;">偏弱（主要为TTS）</span></div>
+            <div style="display:flex;justify-content:space-between;"><span style="color:#666;">中文支持</span><span style="color:#4ade80;">优秀</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <p>GPT 做文本理解 + SoVITS 做语音合成。零样本克隆能力强（几秒音频即可）。但目前主要面向 TTS 说话场景，唱歌能力不如 RVC/DiffSinger。适合作为"快速声音录入"的辅助方案。</p>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>推荐组合</h3>
+  <div class="mockup">
+    <div class="mockup-body" style="padding:20px;">
+      <div style="display:flex;align-items:center;gap:16px;margin-bottom:12px;">
+        <div style="background:#d4a853;color:#0d0d0d;padding:4px 12px;border-radius:9999px;font-size:10px;font-weight:600;letter-spacing:0.1em;">主方案</div>
+        <span style="font-weight:600;">RVC</span><span style="color:#a0a0a0;">— 声音克隆 + 腔调保留</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:16px;">
+        <div style="background:rgba(96,165,250,0.15);color:#60a5fa;padding:4px 12px;border-radius:9999px;font-size:10px;font-weight:600;letter-spacing:0.1em;">辅方案</div>
+        <span style="font-weight:600;">DiffSinger</span><span style="color:#a0a0a0;">— 预置 AI 歌手库</span>
+      </div>
+      <p style="color:#666;margin-top:16px;font-size:12px;">RVC 负责"用户上传歌手声音 → 学习 → 克隆"的完整流程；DiffSinger 提供 5-10 个预置 AI 歌手让零门槛用户直接使用。GPT-SoVITS 暂不必要（唱歌能力弱）。</p>
+    </div>
+  </div>
+</div>

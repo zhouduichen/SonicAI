@@ -1,0 +1,108 @@
+<h2>SonicAI 当前功能清单</h2>
+<p class="subtitle">"已有"和"缺失"一目了然</p>
+
+<div class="split">
+  <div class="mockup">
+    <div class="mockup-header">前端（Next.js 14）</div>
+    <div class="mockup-body" style="padding:16px;">
+      <h4 style="color:#d4a853;font-size:12px;letter-spacing:0.1em;margin-bottom:12px;">先导页 /</h4>
+      <div style="font-size:12px;color:#a0a0a0;margin-bottom:4px;">✓ 动态标题动画</div>
+      <div style="font-size:12px;color:#a0a0a0;margin-bottom:4px;">✓ 精选曲目展示</div>
+      <div style="font-size:12px;color:#a0a0a0;margin-bottom:4px;">✓ 使用流程说明</div>
+      <div style="font-size:12px;color:#a0a0a0;margin-bottom:4px;">✓ 音频可视化背景</div>
+      <div style="font-size:12px;color:#a0a0a0;margin-bottom:16px;">✓ 光束/波纹背景动效</div>
+
+      <h4 style="color:#d4a853;font-size:12px;letter-spacing:0.1em;margin-bottom:12px;">创作页 /create</h4>
+      <div style="font-size:12px;color:#a0a0a0;margin-bottom:4px;">✓ 侧边导航栏</div>
+      <div style="font-size:12px;color:#a0a0a0;margin-bottom:4px;">✓ 拖拽上传组件 (Dropzone)</div>
+      <div style="font-size:12px;color:#a0a0a0;margin-bottom:4px;">✓ 风格标签库</div>
+      <div style="font-size:12px;color:#a0a0a0;margin-bottom:4px;">✓ 生成控制台</div>
+      <div style="font-size:12px;color:#a0a0a0;margin-bottom:4px;">✓ 音乐播放器 + VU 波形</div>
+      <div style="font-size:12px;color:#a0a0a0;margin-bottom:4px;">✓ 生成历史列表</div>
+      <div style="font-size:12px;color:#a0a0a0;margin-bottom:4px;">✓ 模型选择器</div>
+      <div style="font-size:12px;color:#a0a0a0;margin-bottom:4px;">✓ 批量生成控制台</div>
+      <div style="font-size:12px;color:#a0a0a0;margin-bottom:4px;">✓ 风格混合面板</div>
+      <div style="font-size:12px;color:#a0a0a0;margin-bottom:4px;">✓ 完整波形查看器</div>
+      <div style="font-size:12px;color:#a0a0a0;margin-bottom:4px;">✓ 暗/亮主题切换</div>
+    </div>
+  </div>
+
+  <div class="mockup">
+    <div class="mockup-header">后端（FastAPI + Celery）</div>
+    <div class="mockup-body" style="padding:16px;">
+      <h4 style="color:#d4a853;font-size:12px;letter-spacing:0.1em;margin-bottom:12px;">已实现</h4>
+      <div style="font-size:12px;color:#a0a0a0;margin-bottom:4px;">✓ JWT 用户认证</div>
+      <div style="font-size:12px;color:#a0a0a0;margin-bottom:4px;">✓ 音频文件上传</div>
+      <div style="font-size:12px;color:#a0a0a0;margin-bottom:4px;">✓ 异步任务队列 (Celery)</div>
+      <div style="font-size:12px;color:#a0a0a0;margin-bottom:4px;">✓ 音乐生成 API</div>
+      <div style="font-size:12px;color:#a0a0a0;margin-bottom:4px;">✓ 历史记录查询</div>
+      <div style="font-size:12px;color:#a0a0a0;margin-bottom:4px;">✓ SQLite 数据库</div>
+      <div style="font-size:12px;color:#a0a0a0;margin-bottom:4px;">✓ Schema 层（含 Batch/Blend）</div>
+      <div style="font-size:12px;color:#a0a0a0;margin-bottom:16px;">✓ ModelRegistry 模型管理</div>
+
+      <h4 style="color:#f59e0b;font-size:12px;letter-spacing:0.1em;margin-bottom:12px;">Mock 状态（待接入真实模型）</h4>
+      <div style="font-size:12px;color:#f59e0b;margin-bottom:4px;">⚠ 人声分离 → Mock</div>
+      <div style="font-size:12px;color:#f59e0b;margin-bottom:4px;">⚠ 风格提取 → Mock</div>
+      <div style="font-size:12px;color:#f59e0b;margin-bottom:16px;">⚠ 音乐生成 → Mock</div>
+
+      <h4 style="color:#ef4444;font-size:12px;letter-spacing:0.1em;margin-bottom:12px;">完全缺失</h4>
+      <div style="font-size:12px;color:#ef4444;margin-bottom:4px;">✗ 人声合成 / 声音克隆</div>
+      <div style="font-size:12px;color:#ef4444;margin-bottom:4px;">✗ 歌词输入 / 管理</div>
+      <div style="font-size:12px;color:#ef4444;margin-bottom:4px;">✗ 声纹验证</div>
+      <div style="font-size:12px;color:#ef4444;margin-bottom:4px;">✗ 音频数字水印</div>
+      <div style="font-size:12px;color:#ef4444;margin-bottom:4px;">✗ 人声+伴奏混音</div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>新增人声功能需要补什么</h3>
+  <div class="mockup">
+    <div class="mockup-body" style="padding:20px;">
+      <table style="width:100%;font-size:13px;border-collapse:collapse;">
+        <thead>
+          <tr style="border-bottom:1px solid #262626;">
+            <th style="text-align:left;padding:10px;color:#a0a0a0;">模块</th>
+            <th style="text-align:left;padding:10px;color:#a0a0a0;">要做的</th>
+            <th style="text-align:left;padding:10px;color:#a0a0a0;">依赖/模型</th>
+          </tr>
+          <tr style="border-bottom:1px solid #1f1f1f;">
+            <td style="padding:10px;font-weight:600;">人声分离</td>
+            <td style="padding:10px;">Mock → 接入真实 Demucs/UVR</td>
+            <td style="padding:10px;color:#666;">已有规划</td>
+          </tr>
+          <tr style="border-bottom:1px solid #1f1f1f;">
+            <td style="padding:10px;font-weight:600;">声音训练</td>
+            <td style="padding:10px;">新增 RVC 训练管线</td>
+            <td style="padding:10px;color:#d4a853;">RVC repo</td>
+          </tr>
+          <tr style="border-bottom:1px solid #1f1f1f;">
+            <td style="padding:10px;font-weight:600;">歌声推理</td>
+            <td style="padding:10px;">新增 RVC 推理接口</td>
+            <td style="padding:10px;color:#d4a853;">RVC repo</td>
+          </tr>
+          <tr style="border-bottom:1px solid #1f1f1f;">
+            <td style="padding:10px;font-weight:600;">声纹验证</td>
+            <td style="padding:10px;">录音 + 特征比对</td>
+            <td style="padding:10px;color:#666;">Speaker Verification</td>
+          </tr>
+          <tr style="border-bottom:1px solid #1f1f1f;">
+            <td style="padding:10px;font-weight:600;">歌词管理</td>
+            <td style="padding:10px;">歌词输入 + 时间轴编辑器</td>
+            <td style="padding:10px;color:#666;">前端为主</td>
+          </tr>
+          <tr style="border-bottom:1px solid #1f1f1f;">
+            <td style="padding:10px;font-weight:600;">人声混音</td>
+            <td style="padding:10px;">RVC 输出 + MusicGen 伴奏合并</td>
+            <td style="padding:10px;color:#666;">音频处理库</td>
+          </tr>
+          <tr>
+            <td style="padding:10px;font-weight:600;">数字水印</td>
+            <td style="padding:10px;">音频隐写标记</td>
+            <td style="padding:10px;color:#666;">AudioStego类库</td>
+          </tr>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>

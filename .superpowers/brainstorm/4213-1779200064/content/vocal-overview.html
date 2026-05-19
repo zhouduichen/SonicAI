@@ -1,0 +1,52 @@
+<h2>SonicAI 人声合成能力 — 功能定位</h2>
+<p class="subtitle">在现有器乐生成管线基础上，加入歌声合成 / 声音克隆</p>
+
+<div class="section">
+  <h3>当前能力 vs 目标能力</h3>
+  <div class="split">
+    <div class="mockup">
+      <div class="mockup-header">现在：纯器乐</div>
+      <div class="mockup-body" style="padding:20px;font-family:monospace;font-size:13px;">
+        <p style="color:#a0a0a0;">上传音频 → 提取风格 → 文字描述</p>
+        <div style="border:1px dashed #444;padding:12px;border-radius:8px;margin:12px 0;text-align:center;color:#888;">🎵 MusicGen 生成纯音乐</div>
+        <p style="color:#666;">输出：器乐曲（无歌词无演唱）</p>
+      </div>
+    </div>
+    <div class="mockup">
+      <div class="mockup-header">目标：器乐 + 人声</div>
+      <div class="mockup-body" style="padding:20px;font-family:monospace;font-size:13px;">
+        <p style="color:#a0a0a0;">上传音频 → 提取风格 → 文字描述 + 歌词</p>
+        <div style="border:1px dashed #d4a853;padding:12px;border-radius:8px;margin:12px 0;text-align:center;color:#d4a853;">🎤 人声模型 + MusicGen 混合输出</div>
+        <p style="color:#a0a0a0;">输出：完整歌曲（伴奏 + 歌声）</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>核心问题：你想要什么级别的"人声"？</h3>
+</div>
+
+<div class="options">
+  <div class="option" data-choice="svc" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>声音克隆（SVC）</h3>
+      <p>上传某歌手/你自己的 30秒-数分钟干声 → 用任意旋律+歌词生成该声音唱歌。保留音色特征，产生以假乱真的效果。</p>
+    </div>
+  </div>
+  <div class="option" data-choice="tts-singing" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>AI 虚拟歌手（TTS 唱歌模式）</h3>
+      <p>无需上传任何声音。从预置的 AI 歌手库中选择（中文/英文/日文、男/女/童声），输入旋律+歌词即可生成。不需要克隆真人声音。</p>
+    </div>
+  </div>
+  <div class="option" data-choice="both" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>两者都要</h3>
+      <p>先实现 SVC 声音克隆作为核心卖点，同时提供预置 AI 歌手作为"零门槛入门体验"。克隆是高级功能，预置声音让所有人立即上手。</p>
+    </div>
+  </div>
+</div>

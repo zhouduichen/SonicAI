@@ -1,0 +1,81 @@
+<h2>最简方案 — 只加最少的代码</h2>
+<p class="subtitle">不新增模式、不新增向导、不新增面板。只加一张卡片</p>
+
+<div class="section">
+  <h3>改动范围：极简</h3>
+  <div style="background:#0d0d0d;border-radius:8px;padding:16px;font-family:monospace;font-size:12px;line-height:1.8;color:#a0a0a0;">
+    <span style="color:#666;"># 新增 1 个文件</span><br>
+    <span style="color:#22c55e;">+</span> <span style="color:#d4a853;">VoiceModelLibrary.tsx</span> &nbsp;<span style="color:#666;">← 以 StyleLibrary.tsx 复制，只改 10 处文字/类型</span><br>
+    <br>
+    <span style="color:#666;"># 修改 2 个文件</span><br>
+    <span style="color:#f59e0b;">~</span> <span style="color:#d4a853;">create/page.tsx</span> &nbsp;<span style="color:#666;">← 在 StyleLibrary 旁边加一个 VoiceModelLibrary</span><br>
+    <span style="color:#f59e0b;">~</span> <span style="color:#d4a853;">types/index.ts</span> &nbsp;<span style="color:#666;">← 加 VoiceModel 类型</span><br>
+    <br>
+    <span style="color:#666;"># 不动</span><br>
+    <span style="color:#a0a0a0;">·</span> Sidebar &nbsp;<span style="color:#666;">不动</span><br>
+    <span style="color:#a0a0a0;">·</span> StyleLibrary &nbsp;<span style="color:#666;">不动</span><br>
+    <span style="color:#a0a0a0;">·</span> Dropzone &nbsp;<span style="color:#666;">不动</span><br>
+    <span style="color:#a0a0a0;">·</span> GenerationConsole &nbsp;<span style="color:#666;">不动</span><br>
+    <span style="color:#a0a0a0;">·</span> MusicPlayer &nbsp;<span style="color:#666;">不动</span><br>
+    <span style="color:#a0a0a0;">·</span> Playlist &nbsp;<span style="color:#666;">不动</span>
+  </div>
+</div>
+
+<div class="section">
+  <h3>VoiceModelLibrary 就是 StyleLibrary 的镜像</h3>
+  <div class="split">
+    <div class="mockup">
+      <div class="mockup-header">StyleLibrary（不动）</div>
+      <div class="mockup-body" style="padding:12px;font-size:10px;color:#a0a0a0;line-height:2;">
+        eyerbow "第 2 步"<br>
+        标题 "风格标签库"<br>
+        计数 "N 个风格"<br>
+        图标 Disc<br>
+        空状态 "暂无风格标签"<br>
+        副标题 "128 维向量"<br>
+        选中chip "已选"
+      </div>
+    </div>
+    <div class="mockup">
+      <div class="mockup-header" style="display:flex;align-items:center;gap:6px;">
+        <span style="background:#d4a853;color:#000;padding:1px 6px;border-radius:9999px;font-size:8px;">NEW</span>
+        VoiceModelLibrary
+      </div>
+      <div class="mockup-body" style="padding:12px;font-size:10px;color:#d4a853;line-height:2;">
+        eyerbow "声音模型"<br>
+        标题 "声音模型库"<br>
+        计数 "N 个声音"<br>
+        图标 Microphone<br>
+        空状态 "暂无声音模型"<br>
+        副标题 "PREMIUM · 200 epochs"<br>
+        选中chip 质量档位
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>create/page.tsx 改动：只在 StyleLibrary 旁边加一行</h3>
+  <div style="background:#0d0d0d;border-radius:8px;padding:16px;font-family:monospace;font-size:11px;color:#a0a0a0;line-height:1.6;">
+    <span style="color:#666;">// 现有代码</span><br>
+    &lt;Dropzone ... /&gt;<br>
+    &lt;StyleLibrary ... /&gt;<br>
+    <br>
+    <span style="color:#666;">// 新增一行</span><br>
+    <span style="color:#d4a853;">&lt;VoiceModelLibrary</span><br>
+    <span style="color:#d4a853;">&nbsp;&nbsp;models={voiceModels}</span><br>
+    <span style="color:#d4a853;">&nbsp;&nbsp;onSelect={handleVoiceSelect}</span><br>
+    <span style="color:#d4a853;">&nbsp;&nbsp;onDelete={handleVoiceDelete}</span><br>
+    <span style="color:#d4a853;">&nbsp;&nbsp;selectedId={selectedVoiceId}</span><br>
+    <span style="color:#d4a853;">/&gt;</span><br>
+    <br>
+    <span style="color:#666;">// 现有代码保持不变</span><br>
+    &lt;GenerationConsole ... /&gt;<br>
+    &lt;MusicPlayer ... /&gt;
+  </div>
+</div>
+
+<div class="section">
+  <h3>就这些</h3>
+  <p style="font-size:13px;color:#a0a0a0;">没有 VocalGenPanel、没有训练向导、没有模式切换。VoiceModelLibrary 空状态里放一个"训练新声音"的触发按钮，点击 → 调用 POST /voice/train → 进入训练列表。</p>
+</div>

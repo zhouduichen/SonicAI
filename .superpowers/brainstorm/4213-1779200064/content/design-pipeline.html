@@ -1,0 +1,100 @@
+<h2>设计 Section 3：RVC 训练管线</h2>
+<p class="subtitle">从上传歌曲到可用声音模型的完整流程</p>
+
+<div class="section">
+  <h3>Phase 1 完整数据流</h3>
+  <div style="background:#141414;border-radius:12px;padding:24px;margin-top:12px;font-family:monospace;font-size:11px;line-height:2;">
+    <div style="color:#666;">用户上传歌曲 (MP3/WAV/FLAC)</div>
+    <div style="color:#666;text-align:center;">│</div>
+    <div style="color:#a0a0a0;background:rgba(212,168,83,0.06);padding:8px 12px;border-radius:4px;">
+      <span style="color:#d4a853;">Step 1 — 人声分离</span> (Celery Task)<br>
+      UVR/Demucs 分离人声轨和伴奏轨 → 保存干声 .wav<br>
+      <span style="color:#666;">耗时: ~2min | 显存: ~4GB | 完成后卸载模型</span>
+    </div>
+    <div style="color:#666;text-align:center;">│</div>
+    <div style="color:#a0a0a0;background:rgba(212,168,83,0.06);padding:8px 12px;border-radius:4px;">
+      <span style="color:#d4a853;">Step 2 — 音频预处理</span><br>
+      切片 (slicing) + 响度归一化 + 静音段裁剪<br>
+      <span style="color:#666;">耗时: ~30s | CPU操作</span>
+    </div>
+    <div style="color:#666;text-align:center;">│</div>
+    <div style="color:#a0a0a0;background:rgba(212,168,83,0.06);padding:8px 12px;border-radius:4px;">
+      <span style="color:#d4a853;">Step 3 — 特征提取</span><br>
+      HuBERT 提取音素级特征 → 保存 .pt 特征文件<br>
+      <span style="color:#666;">耗时: ~2min | 显存: ~3GB | 完成后卸载HuBERT</span>
+    </div>
+    <div style="color:#666;text-align:center;">│</div>
+    <div style="color:#a0a0a0;background:rgba(212,168,83,0.06);padding:8px 12px;border-radius:4px;">
+      <span style="color:#d4a853;">Step 4 — RVC 渐进式训练</span><br>
+      加载 VITS 基础模型 → Fine-tune on 用户干声<br>
+      ┌─────────────────────────────────────────────┐<br>
+      │  20 epochs  →  Preview   →  保存 checkpoint │<br>
+      │  100 epochs →  Standard  →  保存 checkpoint │<br>
+      │  200 epochs →  Premium   →  保存 checkpoint │<br>
+      └─────────────────────────────────────────────┘<br>
+      <span style="color:#666;">耗时: 2min → 8min → 20min | 显存: ~8GB | 完成后卸载VITS</span>
+    </div>
+    <div style="color:#666;text-align:center;">│</div>
+    <div style="color:#a0a0a0;background:rgba(212,168,83,0.06);padding:8px 12px;border-radius:4px;">
+      <span style="color:#d4a853;">Step 5 — RVC 推理（用户触发）</span><br>
+      用户上传参考人声（自己唱/哼的歌） → RVC 转换为目标声音<br>
+      <span style="color:#666;">耗时: ~10-30s/分钟音频 | 显存: ~5GB</span>
+    </div>
+    <div style="color:#666;text-align:center;">│</div>
+    <div style="color:#22c55e;">输出: 克隆声音演唱的歌声 .wav</div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>关键实现细节</h3>
+
+  <div class="mockup" style="margin-bottom:16px;">
+    <div class="mockup-header" style="font-size:12px;">RVC 模型集成方式</div>
+    <div class="mockup-body" style="padding:16px;">
+      <p style="font-size:13px;color:#a0a0a0;margin-bottom:8px;">RVC 是独立的 GitHub 项目，不是 pip 包。集成策略：</p>
+      <div style="background:#0d0d0d;padding:12px;border-radius:8px;font-family:monospace;font-size:11px;color:#a0a0a0;line-height:1.6;">
+        <span style="color:#666;"># 方式1：Git子模块引入核心推理代码</span><br>
+        backend/app/services/rvc/ ← RVC项目的 infer/ 和 train/ 目录<br>
+        <br>
+        <span style="color:#666;"># 方式2：subprocess调用RVC脚本</span><br>
+        Python subprocess执行 RVC 的 infer.py / train.py<br>
+        <br>
+        <span style="color:#d4a853;">→ 推荐方式1（子模块）</span><span style="color:#666;">：更可控，可复用RVC的HuBERT预处理等模块</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="mockup" style="margin-bottom:16px;">
+    <div class="mockup-header" style="font-size:12px;">Celery 任务编排</div>
+    <div class="mockup-body" style="padding:16px;">
+      <p style="font-size:13px;color:#a0a0a0;margin-bottom:8px;">使用 Celery Chain 串联，每个步骤独立可重试：</p>
+      <div style="background:#0d0d0d;padding:12px;border-radius:8px;font-family:monospace;font-size:11px;color:#a0a0a0;line-height:1.6;">
+        chain(<br>
+        &nbsp;&nbsp;separate_vocals.s(audio_id),<br>
+        &nbsp;&nbsp;preprocess_vocals.s(),<br>
+        &nbsp;&nbsp;extract_hubert_features.s(),<br>
+        &nbsp;&nbsp;train_rvc_progressive.s(epoch_targets=[20,100,200])<br>
+        )<br>
+        <br>
+        <span style="color:#666;"># 每个checkpoint保存后推送WebSocket通知给前端</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="mockup">
+    <div class="mockup-header" style="font-size:12px;">进度通知机制</div>
+    <div class="mockup-body" style="padding:16px;">
+      <p style="font-size:13px;color:#a0a0a0;">前端轮询 GET /voice/status/{id}（每 3 秒），返回：</p>
+      <div style="background:#0d0d0d;padding:12px;border-radius:8px;font-family:monospace;font-size:11px;color:#a0a0a0;line-height:1.6;">
+      {<br>
+      &nbsp;&nbsp;"status": "training",<br>
+      &nbsp;&nbsp;"current_epoch": 45,<br>
+      &nbsp;&nbsp;"total_epochs": 200,<br>
+      &nbsp;&nbsp;"current_tier": "preview",<br>
+      &nbsp;&nbsp;"available_tiers": ["preview"],<br>
+      &nbsp;&nbsp;"estimated_remaining_seconds": 660<br>
+      }
+      </div>
+    </div>
+  </div>
+</div>

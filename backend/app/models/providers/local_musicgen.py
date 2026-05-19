@@ -1,0 +1,117 @@
+"""Local MusicGen provider for music generation."""
+
+import os
+import time
+import math
+import struct
+import wave
+import uuid
+import logging
+from app.models.providers.base import MusicGenProvider
+from app.core.config import get_settings
+
+logger = logging.getLogger(__name__)
+settings = get_settings()
+
+try:
+    import torch
+    from audiocraft.models import MusicGen as _MusicGenModel
+
+    MUSICGEN_AVAILABLE = True
+    logger.info("audiocraft package found — using real MusicGen")
+except ImportError:
+    MUSICGEN_AVAILABLE = False
+    logger.warning("audiocraft not installed — using mock music generation")
+
+try:
+    from diffusers import AudioLDMPipeline  # noqa: F401
+
+    AUDIOLDM_AVAILABLE = True
+    logger.info("diffusers package found — AudioLDM available")
+except ImportError:
+    AUDIOLDM_AVAILABLE = False
+    logger.warning("diffusers not installed — AudioLDM will use mock")
+
+
+class LocalMusicGenProvider(MusicGenProvider):
+    """Local MusicGen provider with mock fallback."""
+
+    def __init__(self, model_key: str):
+        self._key = model_key
+        self._loaded = False
+        self._model = None
+
+    @property
+    def model_key(self) -> str:
+        return self._key
+
+    def load(self) -> None:
+        if self._model is not None:
+            self._loaded = True
+            return
+
+        if MUSICGEN_AVAILABLE and not self._key.startswith("audioldm"):
+            try:
+                hf_names = {
+                    "musicgen_small": "facebook/musicgen-small",
+                    "musicgen_medium": "facebook/musicgen-medium",
+                    "musicgen_large": "facebook/musicgen-large",
+                    "musicgen_melody": "facebook/musicgen-melody",
+                }
+                name = hf_names.get(self._key, "facebook/musicgen-small")
+                self._model = _MusicGenModel.get_pretrained(name)
+                self._model.set_generation_params(duration=30)
+                self._loaded = True
+                logger.info(f"MusicGen model loaded: {name}")
+            except Exception as e:
+                logger.error(f"Failed to load MusicGen: {e}")
+                self._loaded = False
+                self._model = None
+        else:
+            self._loaded = True  # Mock
+
+    def unload(self) -> None:
+        self._loaded = False
+        self._model = None
+
+    def is_loaded(self) -> bool:
+        return self._loaded
+
+    def vram_required(self) -> float:
+        return {"musicgen_small": 2.5, "musicgen_medium": 5.0, "musicgen_large": 8.0, "musicgen_melody": 5.5, "audioldm2": 6.0}.get(self._key, 5.0)
+
+    def generate(self, embedding: list[float], text_prompt: str) -> dict:
+        os.makedirs(settings.GENERATED_DIR, exist_ok=True)
+        output_filename = f"generated_{uuid.uuid4().hex[:8]}.wav"
+        output_path = os.path.join(settings.GENERATED_DIR, output_filename)
+
+        duration = 30
+
+        if MUSICGEN_AVAILABLE and self._model is not None and not self._key.startswith("audioldm"):
+            try:
+                import torchaudio
+                embedding_tensor = torch.tensor(embedding, dtype=torch.float32).unsqueeze(0)
+                wav_tokens = self._model.generate_with_chroma(
+                    descriptions=[text_prompt],
+                    melody_wavs=None,
+                    progress=True,
+                )
+                wav = wav_tokens[0].cpu()
+                torchaudio.save(output_path, wav, 32000)
+                duration = int(wav.shape[-1] / 32000)
+                return {"file_path": output_path, "duration_seconds": duration}
+            except Exception as e:
+                logger.error(f"MusicGen generation failed: {e}")
+
+        # Mock fallback: generate a sine tone WAV
+        sample_rate = 32000
+        duration = 30
+        with wave.open(output_path, "w") as wav:
+            wav.setnchannels(1)
+            wav.setsampwidth(2)
+            wav.setframerate(sample_rate)
+            for i in range(sample_rate * duration):
+                value = int(12000 * math.sin(2.0 * math.pi * 440 * i / sample_rate))
+                wav.writeframes(struct.pack("<h", value))
+
+        return {"file_path": output_path, "duration_seconds": duration}

@@ -1,0 +1,166 @@
+<h2>设计 Section 4（修订 v3）— 没有新模式，只有新卡片</h2>
+<p class="subtitle">VoiceModelLibrary 就是创作页中的一张新卡片，与 Dropzone / StyleLibrary 同等地位</p>
+
+<div class="section">
+  <h3>创作页 /create — 现有卡片布局</h3>
+  <div style="background:#141414;border-radius:12px;padding:20px;">
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div style="display:flex;gap:12px;">
+        <div style="flex:1;background:#0d0d0d;border:1px solid #262626;border-radius:12px;padding:20px;text-align:center;">
+          <span style="color:#a0a0a0;font-size:12px;">Dropzone</span><br>
+          <span style="color:#666;font-size:10px;">上传音频</span>
+        </div>
+      </div>
+      <div style="display:flex;gap:12px;">
+        <div style="flex:1;background:#0d0d0d;border:1px solid #262626;border-radius:12px;padding:20px;text-align:center;">
+          <span style="color:#a0a0a0;font-size:12px;">StyleLibrary</span><br>
+          <span style="color:#666;font-size:10px;">风格标签 · 第 2 步</span>
+        </div>
+      </div>
+      <div style="display:flex;gap:12px;">
+        <div style="flex:1;background:#0d0d0d;border:1px solid #262626;border-radius:12px;padding:20px;text-align:center;">
+          <span style="color:#a0a0a0;font-size:12px;">GenerationConsole</span><br>
+          <span style="color:#666;font-size:10px;">生成音乐</span>
+        </div>
+        <div style="flex:1;background:#0d0d0d;border:1px solid #262626;border-radius:12px;padding:20px;text-align:center;">
+          <span style="color:#a0a0a0;font-size:12px;">MusicPlayer</span><br>
+          <span style="color:#666;font-size:10px;">播放器</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>加入 VoiceModelLibrary 之后 → 同一页面，新增一张卡</h3>
+  <div style="background:#141414;border-radius:12px;padding:20px;">
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div style="display:flex;gap:12px;">
+        <div style="flex:1;background:#0d0d0d;border:1px solid #262626;border-radius:12px;padding:20px;text-align:center;">
+          <span style="color:#a0a0a0;font-size:12px;">Dropzone</span><br>
+          <span style="color:#666;font-size:10px;">上传歌曲（含人声）/ 上传参考人声</span>
+        </div>
+      </div>
+      <div style="display:flex;gap:12px;">
+        <div style="flex:1;background:#0d0d0d;border:1.5px solid #d4a853;border-radius:12px;padding:20px;">
+          <div style="display:flex;align-items:center;gap:6px;justify-content:center;margin-bottom:4px;">
+            <span style="background:rgba(212,168,83,0.15);color:#d4a853;padding:2px 8px;border-radius:9999px;font-size:9px;font-family:monospace;">NEW</span>
+            <span style="color:#d4a853;font-size:14px;font-weight:600;">VoiceModelLibrary</span>
+          </div>
+          <span style="color:#a0a0a0;font-size:10px;">声音模型库 · 与 StyleLibrary 同规格</span>
+        </div>
+        <div style="flex:1;background:#0d0d0d;border:1px solid #262626;border-radius:12px;padding:20px;text-align:center;">
+          <span style="color:#a0a0a0;font-size:12px;">StyleLibrary</span><br>
+          <span style="color:#666;font-size:10px;">风格标签（保持不变）</span>
+        </div>
+      </div>
+      <div style="display:flex;gap:12px;">
+        <div style="flex:1;background:#0d0d0d;border:1.5px solid #d4a853;border-radius:12px;padding:20px;">
+          <div style="display:flex;align-items:center;gap:6px;justify-content:center;margin-bottom:4px;">
+            <span style="background:rgba(212,168,83,0.15);color:#d4a853;padding:2px 8px;border-radius:9999px;font-size:9px;font-family:monospace;">NEW</span>
+            <span style="color:#d4a853;font-size:14px;font-weight:600;">VocalGenPanel</span>
+          </div>
+          <span style="color:#a0a0a0;font-size:10px;">人声生成 · 选择模型 + 上传参考演唱</span>
+        </div>
+        <div style="flex:1;background:#0d0d0d;border:1px solid #262626;border-radius:12px;padding:20px;text-align:center;">
+          <span style="color:#a0a0a0;font-size:12px;">GenerationConsole</span><br>
+          <span style="color:#666;font-size:10px;">器乐生成（保持不变）</span>
+        </div>
+      </div>
+      <div style="display:flex;gap:12px;">
+        <div style="flex:1;background:#0d0d0d;border:1px solid #262626;border-radius:12px;padding:20px;text-align:center;">
+          <span style="color:#a0a0a0;font-size:12px;">MusicPlayer（修改）</span><br>
+          <span style="color:#666;font-size:10px;">新增人声/伴奏轨道切换</span>
+        </div>
+        <div style="flex:1;background:#0d0d0d;border:1px solid #262626;border-radius:12px;padding:20px;text-align:center;">
+          <span style="color:#a0a0a0;font-size:12px;">Playlist</span><br>
+          <span style="color:#666;font-size:10px;">保持不变</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>VoiceModelLibrary 组件 = StyleLibrary 组件（纯复制结构）</h3>
+  <div class="mockup">
+    <div class="mockup-body" style="padding:20px;">
+      <p style="font-size:13px;color:#a0a0a0;margin-bottom:16px;">新建一个 <code style="background:#1c1c1c;padding:2px 6px;border-radius:4px;">VoiceModelLibrary.tsx</code> 组件，直接以 <code style="background:#1c1c1c;padding:2px 6px;border-radius:4px;">StyleLibrary.tsx</code> 为模板复制结构，只改以下内容：</p>
+      <table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <tr style="border-bottom:1px solid #262626;">
+          <th style="text-align:left;padding:8px;color:#a0a0a0;">改动项</th>
+          <th style="text-align:left;padding:8px;color:#a0a0a0;">StyleLibrary 原值</th>
+          <th style="text-align:left;padding:8px;color:#a0a0a0;">VoiceModelLibrary 新值</th>
+        </tr>
+        <tr style="border-bottom:1px solid #1f1f1f;">
+          <td style="padding:8px;">Props 类型</td>
+          <td style="padding:8px;font-family:monospace;color:#666;">StyleTag[]</td>
+          <td style="padding:8px;font-family:monospace;color:#d4a853;">VoiceModel[]</td>
+        </tr>
+        <tr style="border-bottom:1px solid #1f1f1f;">
+          <td style="padding:8px;">eyebrow</td>
+          <td style="padding:8px;color:#666;">"第 2 步"</td>
+          <td style="padding:8px;color:#d4a853;">"声音模型"</td>
+        </tr>
+        <tr style="border-bottom:1px solid #1f1f1f;">
+          <td style="padding:8px;">标题</td>
+          <td style="padding:8px;color:#666;">"风格标签库"</td>
+          <td style="padding:8px;color:#d4a853;">"声音模型库"</td>
+        </tr>
+        <tr style="border-bottom:1px solid #1f1f1f;">
+          <td style="padding:8px;">计数后缀</td>
+          <td style="padding:8px;color:#666;">"个风格"</td>
+          <td style="padding:8px;color:#d4a853;">"个声音"</td>
+        </tr>
+        <tr style="border-bottom:1px solid #1f1f1f;">
+          <td style="padding:8px;">图标</td>
+          <td style="padding:8px;color:#666;">Disc (Phosphor)</td>
+          <td style="padding:8px;color:#d4a853;">Microphone (Phosphor)</td>
+        </tr>
+        <tr style="border-bottom:1px solid #1f1f1f;">
+          <td style="padding:8px;">空状态提示</td>
+          <td style="padding:8px;color:#666;">"暂无风格标签"</td>
+          <td style="padding:8px;color:#d4a853;">"暂无声音模型"</td>
+        </tr>
+        <tr style="border-bottom:1px solid #1f1f1f;">
+          <td style="padding:8px;">空状态副标题</td>
+          <td style="padding:8px;color:#666;">"上传音频后自动提取"</td>
+          <td style="padding:8px;color:#d4a853;">"上传歌曲训练你的专属声音"</td>
+        </tr>
+        <tr style="border-bottom:1px solid #1f1f1f;">
+          <td style="padding:8px;">列表项副标题</td>
+          <td style="padding:8px;color:#666;">"128 维向量"</td>
+          <td style="padding:8px;color:#d4a853;">"PREMIUM · 200 epochs · 2:30" 或 "TRAINING · 45/200"</td>
+        </tr>
+        <tr style="border-bottom:1px solid #1f1f1f;">
+          <td style="padding:8px;">选中 chip 文字</td>
+          <td style="padding:8px;color:#666;">"已选"</td>
+          <td style="padding:8px;color:#d4a853;">质量档位 chip（Preview/Standard/Premium）</td>
+        </tr>
+        <tr>
+          <td style="padding:8px;">其他所有结构</td>
+          <td style="padding:8px;color:#666;" colspan="2">完全相同：card-outer, card-inner, deco线, AnimatePresence, 动画, hover行为, 删除按钮</td>
+        </tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>修改范围总结</h3>
+  <div style="background:#0d0d0d;border-radius:8px;padding:16px;font-family:monospace;font-size:12px;line-height:1.8;color:#a0a0a0;">
+    <span style="color:#666;"># 新增文件</span><br>
+    <span style="color:#22c55e;">+</span> VoiceModelLibrary.tsx &nbsp;<span style="color:#666;">← 以 StyleLibrary.tsx 为模板复制</span><br>
+    <span style="color:#22c55e;">+</span> VocalGenPanel.tsx &nbsp;<span style="color:#666;">← 人声生成面板</span><br>
+    <br>
+    <span style="color:#666;"># 修改文件</span><br>
+    <span style="color:#f59e0b;">~</span> create/page.tsx &nbsp;<span style="color:#666;">← 引入 VoiceModelLibrary + VocalGenPanel</span><br>
+    <span style="color:#f59e0b;">~</span> MusicPlayer.tsx &nbsp;<span style="color:#666;">← 支持人声/伴奏轨切换</span><br>
+    <span style="color:#f59e0b;">~</span> types/index.ts &nbsp;<span style="color:#666;">← 新增 VoiceModel, VocalGeneration 类型</span><br>
+    <br>
+    <span style="color:#666;"># 不修改</span><br>
+    <span style="color:#a0a0a0;">·</span> Sidebar.tsx &nbsp;<span style="color:#666;">← 不需要新增导航项</span><br>
+    <span style="color:#a0a0a0;">·</span> StyleLibrary.tsx &nbsp;<span style="color:#666;">← 完全不动</span><br>
+    <span style="color:#a0a0a0;">·</span> Dropzone.tsx &nbsp;<span style="color:#666;">← 完全不动</span>
+  </div>
+</div>

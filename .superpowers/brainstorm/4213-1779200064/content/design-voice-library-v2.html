@@ -1,0 +1,115 @@
+<h2>设计 Section 4（修订 v2）：VoiceModelLibrary = StyleLibrary 同规格</h2>
+<p class="subtitle">不仅是"参照"，而是完全复用现有 StyleLibrary 的交互模式</p>
+
+<div class="section">
+  <h3>现有创作页布局</h3>
+  <div style="background:#141414;border-radius:12px;padding:20px;margin-top:12px;">
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      <div style="display:flex;gap:8px;">
+        <div style="flex:1;background:#0d0d0d;border:1px solid #262626;border-radius:12px;padding:16px;text-align:center;color:#a0a0a0;font-size:11px;">Dropzone<br><span style="color:#666;">上传音频</span></div>
+        <div style="flex:1;background:#0d0d0d;border:1px solid #262626;border-radius:12px;padding:16px;text-align:center;color:#a0a0a0;font-size:11px;">StyleLibrary<br><span style="color:#666;">风格标签</span></div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <div style="flex:1;background:#0d0d0d;border:1px solid #262626;border-radius:12px;padding:16px;text-align:center;color:#a0a0a0;font-size:11px;">GenerationConsole<br><span style="color:#666;">生成控制</span></div>
+        <div style="flex:1;background:#0d0d0d;border:1px solid #262626;border-radius:12px;padding:16px;text-align:center;color:#a0a0a0;font-size:11px;">MusicPlayer<br><span style="color:#666;">播放器</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>修改后创作页布局 — VoiceModelLibrary 替代 StyleLibrary 的位置</h3>
+  <div style="background:#141414;border-radius:12px;padding:20px;margin-top:12px;">
+    <p style="font-size:11px;color:#666;margin-bottom:12px;">侧边栏 → 切换 Tab：器乐模式 / 人声模式</p>
+    <div style="display:flex;gap:8px;">
+      <div style="background:#0d0d0d;border:1px solid #262626;border-radius:12px;padding:16px;text-align:center;flex:1;">
+        <span style="color:#a0a0a0;font-size:11px;">Dropzone</span><br>
+        <span style="color:#666;font-size:10px;">上传歌曲（含人声）</span>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:8px;">
+      <div style="flex:1;background:#0d0d0d;border:1.5px solid #d4a853;border-radius:12px;padding:16px;text-align:center;">
+        <span style="color:#d4a853;font-size:11px;">VoiceModelLibrary ✦ 新增</span><br>
+        <span style="color:#a0a0a0;font-size:10px;">声音模型列表（训练/选择/删除）</span><br>
+        <span style="color:#666;font-size:9px;">与 StyleLibrary 完全相同的 Double-Bezel + 列表交互</span>
+      </div>
+      <div style="flex:1;background:#0d0d0d;border:1px solid #262626;border-radius:12px;padding:16px;text-align:center;">
+        <span style="color:#a0a0a0;font-size:11px;">StyleLibrary（保留）</span><br>
+        <span style="color:#666;font-size:10px;">风格标签（器乐模式使用）</span>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:8px;">
+      <div style="flex:1;background:#0d0d0d;border:1px solid #262626;border-radius:12px;padding:16px;text-align:center;">
+        <span style="color:#a0a0a0;font-size:11px;">VocalGenPanel ✦ 新增</span><br>
+        <span style="color:#666;font-size:10px;">选择声音模型 + 上传参考演唱 → 生成</span>
+      </div>
+      <div style="flex:1;background:#0d0d0d;border:1px solid #262626;border-radius:12px;padding:16px;text-align:center;">
+        <span style="color:#a0a0a0;font-size:11px;">MusicPlayer（修改）</span><br>
+        <span style="color:#666;font-size:10px;">支持人声/伴奏轨道切换</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>VoiceModelLibrary 组件规格（与 StyleLibrary 完全相同）</h3>
+
+  <div class="split">
+    <div class="mockup">
+      <div class="mockup-header">StyleLibrary（现有）</div>
+      <div class="mockup-body" style="padding:12px;font-size:11px;">
+        <p style="color:#a0a0a0;">card-outer + card-inner</p>
+        <p style="color:#a0a0a0;">Top deco 渐变线 + 菱形</p>
+        <p style="color:#a0a0a0;">eyebrow "第 2 步"</p>
+        <p style="color:#a0a0a0;">Playfair italic 标题</p>
+        <p style="color:#a0a0a0;">Mono 计数 "N 个风格"</p>
+        <p style="color:#a0a0a0;">空状态：虚线菱形</p>
+        <p style="color:#a0a0a0;">列表项：Disc图标 + 名称 + 元数据</p>
+        <p style="color:#a0a0a0;">选中态：accent底色 + 左边框 + "已选"chip</p>
+        <p style="color:#a0a0a0;">hover 显示删除按钮</p>
+        <p style="color:#a0a0a0;">Bottom deco 渐变线 + 菱形</p>
+      </div>
+    </div>
+    <div class="mockup">
+      <div class="mockup-header">VoiceModelLibrary（新增）</div>
+      <div class="mockup-body" style="padding:12px;font-size:11px;">
+        <p style="color:#d4a853;">← 完全相同的结构</p>
+        <p style="color:#d4a853;">← 完全相同的结构</p>
+        <p style="color:#d4a853;">eyebrow "声音模型"</p>
+        <p style="color:#d4a853;">Playfair italic "声音模型库"</p>
+        <p style="color:#d4a853;">Mono 计数 "N 个声音"</p>
+        <p style="color:#d4a853;">空状态：虚线菱形麦克风</p>
+        <p style="color:#d4a853;">列表项：Mic图标 + 名称 + 训练状态/质量档位</p>
+        <p style="color:#d4a853;">选中态：accent底色 + 左边框 + 质量档位chip</p>
+        <p style="color:#d4a853;">hover 显示删除按钮</p>
+        <p style="color:#d4a853;">← 完全相同的结构</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>列表项中"元数据行"的差异</h3>
+  <table style="width:100%;border-collapse:collapse;">
+    <tr style="border-bottom:1px solid #262626;">
+      <th style="text-align:left;padding:10px;font-size:12px;color:#a0a0a0;">状态</th>
+      <th style="text-align:left;padding:10px;font-size:12px;color:#a0a0a0;">StyleLibrary 副标题</th>
+      <th style="text-align:left;padding:10px;font-size:12px;color:#a0a0a0;">VoiceModelLibrary 副标题</th>
+    </tr>
+    <tr style="border-bottom:1px solid #1f1f1f;">
+      <td style="padding:8px 10px;"><span style="font-size:10px;background:#f59e0b;color:#000;padding:2px 6px;border-radius:3px;">训练中</span></td>
+      <td style="padding:8px 10px;color:#666;">N/A</td>
+      <td style="padding:8px 10px;font-size:11px;">"TRAINING · 45/200 epoch" <span style="color:#666;">+ 进度条</span></td>
+    </tr>
+    <tr style="border-bottom:1px solid #1f1f1f;">
+      <td style="padding:8px 10px;"><span style="font-size:10px;background:#22c55e;color:#000;padding:2px 6px;border-radius:3px;">已完成</span></td>
+      <td style="padding:8px 10px;color:#666;">"128 维向量"</td>
+      <td style="padding:8px 10px;font-size:11px;">"PREMIUM · 200 epochs · 2:30 素材"</td>
+    </tr>
+    <tr>
+      <td style="padding:8px 10px;"><span style="font-size:10px;background:#ef4444;color:#fff;padding:2px 6px;border-radius:3px;">失败</span></td>
+      <td style="padding:8px 10px;color:#666;">N/A</td>
+      <td style="padding:8px 10px;font-size:11px;">"FAILED · 点击重试" <span style="color:#ef4444;">+ 可操作</span></td>
+    </tr>
+  </table>
+</div>

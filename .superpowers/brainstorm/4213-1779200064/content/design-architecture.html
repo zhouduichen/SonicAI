@@ -1,0 +1,85 @@
+<h2>设计 Section 1：整体架构</h2>
+<p class="subtitle">Phase 1 — RVC 声音克隆核心链路融入现有 SonicAI 架构</p>
+
+<div class="section">
+  <h3>现有架构 → 加入人声模块后的架构</h3>
+  <div style="background:#141414;border-radius:12px;padding:24px;margin-top:16px;font-family:JetBrains Mono,monospace;font-size:12px;line-height:1.8;">
+    <div style="color:#666;margin-bottom:4px;">┌─────────────────────────────────────────────┐</div>
+    <div style="color:#666;">│  <span style="color:#a0a0a0;">Next.js Frontend</span>                            │</div>
+    <div style="color:#666;">│  Landing + Create Studio                      │</div>
+    <div style="color:#666;">│  <span style="color:#d4a853;">新增：</span>VoiceTrainingWizard, VocalGenPanel     │</div>
+    <div style="color:#666;">├─────────────────────────────────────────────┤</div>
+    <div style="color:#666;">│  <span style="color:#a0a0a0;">FastAPI REST API</span>                             │</div>
+    <div style="color:#666;">│  /auth  /audio  /music  │  <span style="color:#d4a853;">新增：</span>/voice/*   │</div>
+    <div style="color:#666;">├─────────────────────────────────────────────┤</div>
+    <div style="color:#666;">│  <span style="color:#a0a0a0;">Services Layer</span>                                │</div>
+    <div style="color:#666;">│  auth  audio  music  │  <span style="color:#d4a853;">新增：</span>voice_service  │</div>
+    <div style="color:#666;">├─────────────────────────────────────────────┤</div>
+    <div style="color:#666;">│  <span style="color:#a0a0a0;">Celery Task Queue (Redis)</span>                    │</div>
+    <div style="color:#666;">│  器件乐管线：separate → extract → generate      │</div>
+    <div style="color:#666;">│  <span style="color:#d4a853;">新增人声管线：</span>separate_vocals → train_rvc      │</div>
+    <div style="color:#666;">│  <span style="color:#d4a853;">新增推理管线：</span>infer_rvc_vocals                 │</div>
+    <div style="color:#666;">├─────────────────────────────────────────────┤</div>
+    <div style="color:#666;">│  <span style="color:#a0a0a0;">Storage</span>                                       │</div>
+    <div style="color:#666;">│  SQLite  │  Uploads/  │  <span style="color:#d4a853;">新增：</span>VoiceModels/  │</div>
+    <div style="color:#666;">└─────────────────────────────────────────────┘</div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Phase 1 人声模块详解</h3>
+  <table style="width:100%;border-collapse:collapse;margin-top:16px;">
+    <thead>
+      <tr style="border-bottom:1px solid #262626;">
+        <th style="text-align:left;padding:10px;color:#a0a0a0;">模块</th>
+        <th style="text-align:left;padding:10px;color:#a0a0a0;">职责</th>
+        <th style="text-align:left;padding:10px;color:#a0a0a0;">技术</th>
+      </tr>
+      <tr style="border-bottom:1px solid #1f1f1f;">
+        <td style="padding:12px 10px;font-weight:600;color:#d4a853;">人声分离</td>
+        <td style="padding:12px 10px;font-size:13px;">从用户上传的歌曲中分离出干净的人声（干声）<br><span style="color:#666;">现有 Demucs mock → 接入真实模型</span></td>
+        <td style="padding:12px 10px;font-size:12px;">UVR / Demucs</td>
+      </tr>
+      <tr style="border-bottom:1px solid #1f1f1f;">
+        <td style="padding:12px 10px;font-weight:600;color:#d4a853;">声纹验证</td>
+        <td style="padding:12px 10px;font-size:13px;">用户实时录音，与上传的干声比对声纹特征<br><span style="color:#666;">确保"训练的是我自己的声音"</span></td>
+        <td style="padding:12px 10px;font-size:12px;">SpeakerNet / ECAPA</td>
+      </tr>
+      <tr style="border-bottom:1px solid #1f1f1f;">
+        <td style="padding:12px 10px;font-weight:600;color:#d4a853;">RVC 训练</td>
+        <td style="padding:12px 10px;font-size:13px;">用分离的干声训练个人声音模型<br><span style="color:#666;">渐进式：20 epoch → 100 epoch → 200 epoch</span></td>
+        <td style="padding:12px 10px;font-size:12px;">RVC (HuBERT + VITS)</td>
+      </tr>
+      <tr style="border-bottom:1px solid #1f1f1f;">
+        <td style="padding:12px 10px;font-weight:600;color:#d4a853;">RVC 推理</td>
+        <td style="padding:12px 10px;font-size:13px;">输入参考人声（用户演唱/哼唱），输出目标声音的歌声<br><span style="color:#666;">保留腔调，替换音色</span></td>
+        <td style="padding:12px 10px;font-size:12px;">RVC inference</td>
+      </tr>
+      <tr>
+        <td style="padding:12px 10px;font-weight:600;color:#d4a853;">声音模型管理</td>
+        <td style="padding:12px 10px;font-size:13px;">用户可训练多个声音模型，切换使用<br><span style="color:#666;">每个模型绑定一个用户，不可转让</span></td>
+        <td style="padding:12px 10px;font-size:12px;">CRUD + 文件管理</td>
+      </tr>
+    </table>
+  </div>
+</div>
+
+<div class="section">
+  <h3>关键设计决策</h3>
+  <div class="mockup">
+    <div class="mockup-body" style="padding:20px;">
+      <div style="margin-bottom:16px;">
+        <strong style="color:#d4a853;">模型加载策略（与器乐管线一致）</strong>
+        <p style="font-size:13px;color:#a0a0a0;margin-top:4px;">RTX 5080 16GB 显存有限，采用顺序加载/卸载：Demucs → RVC训练 → 卸载 → MusicGen → 卸载。每次只有一个模型驻留显存。</p>
+      </div>
+      <div style="margin-bottom:16px;">
+        <strong style="color:#d4a853;">渐进式训练（解决速度焦虑）</strong>
+        <p style="font-size:13px;color:#a0a0a0;margin-top:4px;">RVC 训练 20 epochs 即出初版（~2min），100 epochs 标准版（~8min），200 epochs 精品版（~20min）。每个 checkpoint 独立存储，用户随时可用低 epoch 版本。</p>
+      </div>
+      <div>
+        <strong style="color:#d4a853;">声音模型归属</strong>
+        <p style="font-size:13px;color:#a0a0a0;margin-top:4px;">每个 VoiceModel 绑定到 user_id，通过声纹验证确保上传者是本人。禁止跨用户共享/导出模型文件。</p>
+      </div>
+    </div>
+  </div>
+</div>
