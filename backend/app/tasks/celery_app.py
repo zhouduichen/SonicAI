@@ -24,4 +24,4 @@ celery_app.conf.update(
 )
 
 # Auto-discover tasks from the audio_pipeline module
-celery_app.autodiscover_tasks(["app.tasks.audio_pipeline"])
+celery_app.autodiscover_tasks(["app.tasks.audio_pipeline", "app.tasks.voice_pipeline"])

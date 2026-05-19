@@ -162,9 +162,16 @@ def process_music_generation(
 
             self.update_state(state="SUCCESS", meta={
                 "stage": "completed", "progress": 100, "message": "音乐生成完成",
-                "music_id": music.id, "file_path": music.file_path, "music_gen_model": music_gen_model,
+                "music_id": music.id, "file_path": music.file_path,
+                "title": music.title, "duration_seconds": music.duration_seconds,
+                "music_gen_model": music_gen_model,
             })
-            return {"stage": "completed", "music_id": music.id}
+            return {
+                "stage": "completed", "music_id": music.id,
+                "file_path": music.file_path, "title": music.title,
+                "duration_seconds": music.duration_seconds,
+                "music_gen_model": music_gen_model,
+            }
         finally:
             db.close()
     except Exception as e:
@@ -236,9 +243,16 @@ def process_blend_generation(
 
             self.update_state(state="SUCCESS", meta={
                 "stage": "completed", "progress": 100, "message": "混合音乐生成完成",
-                "music_id": music.id, "file_path": music.file_path, "music_gen_model": music_gen_model,
+                "music_id": music.id, "file_path": music.file_path,
+                "title": music.title, "duration_seconds": music.duration_seconds,
+                "music_gen_model": music_gen_model,
             })
-            return {"stage": "completed", "music_id": music.id}
+            return {
+                "stage": "completed", "music_id": music.id,
+                "file_path": music.file_path, "title": music.title,
+                "duration_seconds": music.duration_seconds,
+                "music_gen_model": music_gen_model,
+            }
         finally:
             db.close()
     except Exception as e:
@@ -284,8 +298,13 @@ def process_batch_generation(
                 "stage": "completed", "progress": 100,
                 "batch_id": batch_id, "prompt": text_prompt, "model": music_gen_model,
                 "music_id": music.id, "file_path": music.file_path,
+                "title": music.title, "duration_seconds": music.duration_seconds,
             })
-            return {"stage": "completed", "music_id": music.id, "batch_id": batch_id}
+            return {
+                "stage": "completed", "music_id": music.id, "batch_id": batch_id,
+                "file_path": music.file_path, "title": music.title,
+                "duration_seconds": music.duration_seconds,
+            }
         finally:
             db.close()
     except Exception as e:

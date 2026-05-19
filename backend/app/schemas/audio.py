@@ -29,3 +29,9 @@ class StatusResponse(BaseModel):
     style_vector: StyleVectorResponse | None = None
     vocal_sep_model: str | None = None
     style_extract_model: str | None = None
+    # Music generation result fields (populated when polling a music-gen task)
+    music_id: int | None = None
+    file_path: str | None = None
+    title: str | None = None
+    duration_seconds: int | None = None
+    music_gen_model: str | None = None

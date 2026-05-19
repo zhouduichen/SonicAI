@@ -6,8 +6,14 @@ import { motion } from "framer-motion";
 import type { GeneratedMusic } from "@/types";
 import WaveformViewer from "./WaveformViewer";
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+
 interface MusicPlayerProps {
   music: GeneratedMusic | null;
+  hasPrev?: boolean;
+  hasNext?: boolean;
+  onPrev?: () => void;
+  onNext?: () => void;
 }
 
 function formatTime(seconds: number): string {
@@ -16,7 +22,16 @@ function formatTime(seconds: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-export default function MusicPlayer({ music }: MusicPlayerProps) {
+function resolveAudioUrl(music: GeneratedMusic): string {
+  const fp = music.filePath;
+  if (!fp) return "";
+  if (fp.startsWith("http://") || fp.startsWith("https://") || fp.startsWith("blob:") || fp.startsWith("/")) {
+    return fp;
+  }
+  return `${API_BASE}/music/${music.id}/download`;
+}
+
+export default function MusicPlayer({ music, hasPrev, hasNext, onPrev, onNext }: MusicPlayerProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -27,6 +42,7 @@ export default function MusicPlayer({ music }: MusicPlayerProps) {
   const audioCtxRef = useRef<AudioContext | null>(null);
   const sourceRef = useRef<MediaElementAudioSourceNode | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
+  const dirHandleRef = useRef<FileSystemDirectoryHandle | null>(null);
 
   useEffect(() => {
     if (music) {
@@ -88,6 +104,31 @@ export default function MusicPlayer({ music }: MusicPlayerProps) {
     if (audioRef.current) setCurrentTime(audioRef.current.currentTime);
   };
 
+  const handleDownload = useCallback(async () => {
+    if (!music) return;
+
+    try {
+      if (!dirHandleRef.current) {
+        dirHandleRef.current = await window.showDirectoryPicker();
+      }
+      const filename = `${music.title}.wav`;
+      const fileHandle = await dirHandleRef.current.getFileHandle(filename, { create: true });
+      const writable = await fileHandle.createWritable();
+
+      const response = await fetch(resolveAudioUrl(music));
+      await response.body?.pipeTo(writable);
+    } catch (err) {
+      const error = err as Error;
+      if (error.name === "AbortError") return;
+
+      // Fallback: simple browser download
+      const a = document.createElement("a");
+      a.href = resolveAudioUrl(music);
+      a.download = `${music.title}.wav`;
+      a.click();
+    }
+  }, [music]);
+
   const handleLoadedMetadata = () => {
     if (audioRef.current) setDuration(audioRef.current.duration);
   };
@@ -110,8 +151,8 @@ export default function MusicPlayer({ music }: MusicPlayerProps) {
         <div className="card-inner p-6 space-y-5 relative overflow-hidden">
           <audio
             ref={audioRef}
-            src={music.filePath}
-onTimeUpdate={handleTimeUpdate}
+            src={resolveAudioUrl(music)}
+            onTimeUpdate={handleTimeUpdate}
             onLoadedMetadata={handleLoadedMetadata}
             onEnded={() => setIsPlaying(false)}
           />
@@ -138,7 +179,8 @@ onTimeUpdate={handleTimeUpdate}
               </p>
             </div>
             <button className="p-2 transition-colors rounded-full"
-              style={{ color: "var(--text-tertiary)" }}>
+              style={{ color: "var(--text-tertiary)" }}
+              onClick={handleDownload}>
               <Download size={16} weight="regular" />
             </button>
           </div>
@@ -195,8 +237,12 @@ onTimeUpdate={handleTimeUpdate}
             </span>
 
             <div className="flex items-center gap-6">
-              <button className="p-1.5 transition-colors rounded-full"
-                style={{ color: "var(--text-tertiary)" }}>
+              <button
+                onClick={onPrev}
+                disabled={!hasPrev}
+                className="p-1.5 transition-colors rounded-full disabled:opacity-30"
+                style={{ color: hasPrev ? "var(--text-secondary)" : "var(--text-tertiary)" }}
+              >
                 <SkipBack size={18} weight="regular" />
               </button>
 
@@ -214,8 +260,12 @@ onTimeUpdate={handleTimeUpdate}
                 }
               </button>
 
-              <button className="p-1.5 transition-colors rounded-full"
-                style={{ color: "var(--text-tertiary)" }}>
+              <button
+                onClick={onNext}
+                disabled={!hasNext}
+                className="p-1.5 transition-colors rounded-full disabled:opacity-30"
+                style={{ color: hasNext ? "var(--text-secondary)" : "var(--text-tertiary)" }}
+              >
                 <SkipForward size={18} weight="regular" />
               </button>
             </div>

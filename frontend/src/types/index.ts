@@ -68,12 +68,6 @@ export type HardwareTier = "ultra" | "high" | "mid" | "low" | "cpu";
 
 export type PreferenceMode = "speed" | "quality";
 
-export interface TierPreset {
-  vocalSepModel: string;
-  styleExtractModel: string;
-  musicGenModel: string;
-}
-
 // File System Access API
 declare global {
   interface Window {
@@ -91,5 +85,25 @@ export interface HardwareTierConfig {
   tier: HardwareTier;
   label: string;
   maxVramGB: number;
-  presets: Record<PreferenceMode, TierPreset>;
+  presets: Record<PreferenceMode, ModelSelection>;
+}
+
+export interface VoiceModel {
+  id: string;
+  name: string;
+  sourceAudioId: string;
+  status: "pending" | "preprocessing" | "training" | "ready" | "failed";
+  epoch: number;
+  qualityTier: "preview" | "standard" | "premium";
+  durationSeconds: number;
+  createdAt: string;
+}
+
+export interface VocalGeneration {
+  id: string;
+  voiceModelId: string;
+  outputPath: string;
+  status: "pending" | "processing" | "completed" | "failed";
+  durationSeconds: number;
+  createdAt: string;
 }

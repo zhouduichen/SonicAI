@@ -1,4 +1,7 @@
+import os
+
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -10,8 +13,10 @@ from app.models.model_registry import validate_model_key
 from app.schemas.music import GenerateRequest, GenerateResponse, MusicResponse, MusicListResponse
 from app.schemas.blend import BlendGenerateRequest, BlendGenerateResponse, BLEND_PRESETS, BlendPreset
 from app.schemas.batch import BatchGenerateRequest, BatchGenerateResponse, BatchStatusResponse, BatchTaskInfo, BatchCellInfo
+from app.schemas.audio import StatusResponse
 from app.services.music_service import list_user_music
 from app.tasks.audio_pipeline import process_music_generation, process_blend_generation, process_batch_generation
+from app.tasks.celery_app import celery_app
 
 import uuid
 
@@ -203,3 +208,96 @@ def get_batch_status(
         pass
 
     return BatchStatusResponse(batch_id=batch_id, cells=cells, total=len(cells), completed=completed)
+
+
+@router.get("/status/{task_id}", response_model=StatusResponse)
+def get_music_task_status(task_id: str):
+    """Poll the status of a music generation / blend / batch task."""
+    try:
+        result = celery_app.AsyncResult(task_id)
+    except Exception as e:
+        return StatusResponse(task_id=task_id, stage="pending", progress=0, message=f"查询失败: {e}")
+
+    try:
+        state = result.state
+    except Exception:
+        return StatusResponse(task_id=task_id, stage="pending", progress=0, message="任务排队中")
+
+    if state == "PENDING":
+        return StatusResponse(task_id=task_id, stage="pending", progress=0, message="任务排队中")
+
+    if state == "PROGRESS":
+        info = (result.info or {}) if isinstance(result.info, dict) else {}
+        return StatusResponse(
+            task_id=task_id,
+            stage=info.get("stage", "generating"),
+            progress=info.get("progress", 0),
+            message=info.get("message", "生成中..."),
+        )
+
+    if state == "SUCCESS":
+        meta = (result.result or {}) if isinstance(result.result, dict) else {}
+        return StatusResponse(
+            task_id=task_id,
+            stage=meta.get("stage", "completed"),
+            progress=100,
+            message=meta.get("message", "完成"),
+            music_id=meta.get("music_id"),
+            file_path=meta.get("file_path"),
+            title=meta.get("title"),
+            duration_seconds=meta.get("duration_seconds"),
+            music_gen_model=meta.get("music_gen_model"),
+        )
+
+    if state == "FAILURE":
+        return StatusResponse(task_id=task_id, stage="failed", progress=0, message=str(result.info or ""))
+
+    return StatusResponse(task_id=task_id, stage=str(state), progress=0, message="")
+
+
+@router.get("/{music_id}/download")
+def download_music(
+    music_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Download a generated music file."""
+    music = db.query(GeneratedMusic).filter(
+        GeneratedMusic.id == music_id, GeneratedMusic.user_id == user.id
+    ).first()
+    if not music:
+        raise HTTPException(status_code=404, detail="音乐不存在")
+    if not os.path.isfile(music.file_path):
+        raise HTTPException(status_code=404, detail="音频文件不存在")
+    return FileResponse(
+        path=music.file_path,
+        media_type="audio/wav",
+        filename=os.path.basename(music.file_path),
+    )
+
+
+@router.get("/public/featured", response_model=list[MusicResponse])
+def list_featured_music(
+    limit: int = 6,
+    db: Session = Depends(get_db),
+):
+    """List recent generated music from all users (no auth required, for landing page)."""
+    items = (
+        db.query(GeneratedMusic)
+        .order_by(GeneratedMusic.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    return [
+        MusicResponse(
+            id=m.id,
+            title=m.title,
+            prompt=m.prompt,
+            style_name="AI 生成",
+            file_path=m.file_path,
+            duration_seconds=m.duration_seconds,
+            music_gen_model=m.music_gen_model or "musicgen_small",
+            created_at=m.created_at,
+        )
+        for m in items
+    ]

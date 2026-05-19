@@ -1,6 +1,6 @@
-import type { HardwareTierConfig, PreferenceMode, TierPreset } from "@/types";
+import type { HardwareTier, HardwareTierConfig, PreferenceMode } from "@/types";
 
-const PRESET_TIME: Record<string, Record<string, number>> = {
+const PRESET_TIME: Record<HardwareTier, Record<PreferenceMode, number>> = {
   ultra: { speed: 60, quality: 120 },
   high: { speed: 80, quality: 150 },
   mid: { speed: 90, quality: 180 },
@@ -56,10 +56,10 @@ export const HARDWARE_TIERS: HardwareTierConfig[] = [
   },
 ];
 
-export function getTierConfig(tier: string): HardwareTierConfig | undefined {
-  return HARDWARE_TIERS.find((t) => t.tier === tier);
+export function getTierConfig(tier: HardwareTier): HardwareTierConfig {
+  return HARDWARE_TIERS.find((t) => t.tier === tier)!;
 }
 
-export function getEstimatedTime(tier: string, mode: PreferenceMode): number {
-  return PRESET_TIME[tier]?.[mode] ?? 120;
+export function getEstimatedTime(tier: HardwareTier, mode: PreferenceMode): number {
+  return PRESET_TIME[tier][mode];
 }

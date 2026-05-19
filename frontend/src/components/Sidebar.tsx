@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
-import { House, MusicNotes, WaveSine, Books, Playlist, Disc } from "@phosphor-icons/react";
+import { House, MusicNotes, WaveSine, Books, Playlist, Disc, Microphone, Intersect, GridFour } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import ThemeToggle from "./ThemeToggle";
 
@@ -15,6 +15,9 @@ interface SidebarProps {
 const navItems = [
   { id: "studio", label: "STUDIO", sub: "创作工作室", icon: WaveSine },
   { id: "library", label: "LIBRARY", sub: "风格库", icon: Books },
+  { id: "blend", label: "BLEND", sub: "混合创作", icon: Intersect },
+  { id: "batch", label: "BATCH", sub: "批量创作", icon: GridFour },
+  { id: "voice", label: "VOICE", sub: "声音模型库", icon: Microphone },
   { id: "history", label: "ARCHIVE", sub: "生成记录", icon: Playlist },
 ];
 
@@ -64,7 +67,7 @@ export default function Sidebar({ activeTab, onTabChange }: SidebarProps) {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-4 space-y-0.5">
+      <nav className="flex-1 px-4 space-y-0.5 overflow-y-auto">
         <Link
           href="/"
           className="nav-item"

@@ -88,6 +88,11 @@ def get_task_status(task_id: str):
             progress=100,
             message=meta.get("message", "完成"),
             style_vector=meta.get("style_vector"),
+            music_id=meta.get("music_id"),
+            file_path=meta.get("file_path"),
+            title=meta.get("title"),
+            duration_seconds=meta.get("duration_seconds"),
+            music_gen_model=meta.get("music_gen_model"),
         )
 
     if state == "FAILURE":

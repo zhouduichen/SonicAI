@@ -9,8 +9,9 @@ import StyleLibrary from "@/components/StyleLibrary";
 import GenerationConsole from "@/components/GenerationConsole";
 import MusicPlayer from "@/components/MusicPlayer";
 import Playlist from "@/components/Playlist";
+import VoiceModelLibrary from "@/components/VoiceModelLibrary";
 import ErrorBoundary from "@/components/ErrorBoundary";
-import type { AudioAsset, StyleTag, GeneratedMusic, TaskStatus, ModelCatalog, ModelSelection } from "@/types";
+import type { AudioAsset, StyleTag, GeneratedMusic, TaskStatus, ModelCatalog, ModelSelection, VoiceModel } from "@/types";
 import {
   DEFAULT_VOCAL_SEPARATION_MODELS,
   DEFAULT_STYLE_EXTRACTION_MODELS,
@@ -73,6 +74,8 @@ export default function CreatePage() {
   const [activeTab, setActiveTab] = useState("studio");
   const [currentAsset, setCurrentAsset] = useState<AudioAsset | null>(null);
   const [selectedStyle, setSelectedStyle] = useState<StyleTag | null>(null);
+  const [voiceModels, setVoiceModels] = useState<VoiceModel[]>([]);
+  const [selectedVoiceId, setSelectedVoiceId] = useState<string | undefined>(undefined);
 
   const [styles, setStyles] = useState<StyleTag[]>([
     {
@@ -97,8 +100,8 @@ export default function CreatePage() {
       title: "深夜 Lo-Fi 漫步",
       prompt: "一首适合深夜开车的 Lo-Fi 音乐",
       styleName: "我的魔幻电音_01",
-      filePath: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
-      duration: 182,
+      filePath: "/demo.wav",
+      duration: 5,
       createdAt: "2026-05-19",
     },
     {
@@ -106,8 +109,8 @@ export default function CreatePage() {
       title: "晨光氛围电子",
       prompt: "带有爵士钢琴元素的氛围电子乐",
       styleName: "爵士钢琴氛围",
-      filePath: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
-      duration: 153,
+      filePath: "/demo2.wav",
+      duration: 6,
       createdAt: "2026-05-18",
     },
   ]);
@@ -170,8 +173,8 @@ export default function CreatePage() {
               title: prompt.slice(0, 15),
               prompt,
               styleName: selectedStyle.name,
-              filePath: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3",
-              duration: Math.floor(Math.random() * 60) + 90,
+              filePath: "/demo.wav",
+              duration: 5,
               createdAt: new Date().toISOString().split("T")[0],
             };
             setPlaylist((prev) => [newMusic, ...prev]);
@@ -206,17 +209,17 @@ export default function CreatePage() {
             transition={{ duration: 0.5, ease: [0.32, 0.72, 0, 1] }}
           >
             <span className="eyebrow mb-2 inline-block">
-              {activeTab === "studio" ? "创作工作室" : activeTab === "library" ? "风格库" : "生成记录"}
+              {activeTab === "studio" ? "创作工作室" : activeTab === "library" ? "风格库" : activeTab === "voice" ? "声音模型库" : "生成记录"}
             </span>
             <h2 className="text-3xl italic font-medium mt-1 tracking-tight"
               style={{ color: "var(--text-primary)", fontFamily: "'Playfair Display', serif" }}>
-              {activeTab === "studio" ? "AI 音乐创作" : activeTab === "library" ? "风格标签管理" : "生成历史记录"}
+              {activeTab === "studio" ? "AI 音乐创作" : activeTab === "library" ? "风格标签管理" : activeTab === "voice" ? "声音模型管理" : "生成历史记录"}
             </h2>
             <div className="flex items-center gap-3 mt-3">
               <div className="w-8 h-px" style={{ background: "var(--accent)", opacity: 0.4 }} />
               <div className="w-1 h-1 rotate-45" style={{ background: "var(--accent)", opacity: 0.3 }} />
               <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
-                {activeTab === "studio" ? "上传音频 → 选择风格标签 → 输入描述 → 生成专属音乐" : activeTab === "library" ? "查看、选择或删除已提取的音乐风格特征向量" : "播放和回顾所有已生成的 AI 音乐作品"}
+                {activeTab === "studio" ? "上传音频 → 选择风格标签 → 输入描述 → 生成专属音乐" : activeTab === "library" ? "查看、选择或删除已提取的音乐风格特征向量" : activeTab === "voice" ? "上传歌曲训练专属声音模型，选择模型生成人声" : "播放和回顾所有已生成的 AI 音乐作品"}
               </p>
             </div>
           </motion.div>
@@ -276,6 +279,17 @@ export default function CreatePage() {
                   selectedId={selectedStyle?.id}
                   onSelect={setSelectedStyle}
                   onDelete={(id) => setStyles((prev) => prev.filter((s) => s.id !== id))}
+                />
+              </motion.div>
+            )}
+
+            {activeTab === "voice" && (
+              <motion.div key="voice" animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} transition={{ duration: 0.3 }} className="max-w-2xl">
+                <VoiceModelLibrary
+                  models={voiceModels}
+                  selectedId={selectedVoiceId}
+                  onSelect={(model) => setSelectedVoiceId(model.id)}
+                  onDelete={(id) => setVoiceModels((prev) => prev.filter((m) => m.id !== id))}
                 />
               </motion.div>
             )}

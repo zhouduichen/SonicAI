@@ -50,6 +50,7 @@ export default function ModelSelector({
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const [dropdownRect, setDropdownRect] = useState<{
     left: number;
     top: number;
@@ -61,19 +62,26 @@ export default function ModelSelector({
     if (!trigger) return;
     const r = trigger.getBoundingClientRect();
     const vw = window.innerWidth;
+    const maxH = window.innerHeight;
     const desiredWidth = Math.max(r.width, 340);
-    // Clamp left so the dropdown never overflows the right edge
     const left = Math.min(r.left, vw - desiredWidth - 12);
+    // Prefer below, flip above if not enough room
+    const spaceBelow = maxH - r.bottom - 8;
+    const spaceAbove = r.top - 8;
+    const preferAbove = spaceBelow < 260 && spaceAbove > spaceBelow;
     setDropdownRect({
-      left,
-      top: r.bottom + 6,
+      left: Math.max(left, 4),
+      top: preferAbove ? r.top - 8 : r.bottom + 6,
       width: desiredWidth,
     });
   }, []);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      const insideTrigger = containerRef.current?.contains(target);
+      const insideDropdown = dropdownRef.current?.contains(target);
+      if (!insideTrigger && !insideDropdown) {
         setOpen(false);
       }
     };
@@ -106,6 +114,7 @@ export default function ModelSelector({
     <AnimatePresence>
       {open && (
         <motion.div
+          ref={dropdownRef}
           initial={{ opacity: 0, y: -4, scale: 0.98 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: -4, scale: 0.98 }}
