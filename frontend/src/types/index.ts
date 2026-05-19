@@ -63,3 +63,33 @@ export interface ModelSelection {
   styleExtractModel: string;
   musicGenModel: string;
 }
+
+export type HardwareTier = "ultra" | "high" | "mid" | "low" | "cpu";
+
+export type PreferenceMode = "speed" | "quality";
+
+export interface TierPreset {
+  vocalSepModel: string;
+  styleExtractModel: string;
+  musicGenModel: string;
+}
+
+// File System Access API
+declare global {
+  interface Window {
+    showDirectoryPicker(options?: { mode?: "read" | "readwrite" }): Promise<FileSystemDirectoryHandle>;
+  }
+  interface FileSystemDirectoryHandle {
+    getFileHandle(name: string, options?: { create?: boolean }): Promise<FileSystemFileHandle>;
+  }
+  interface FileSystemFileHandle {
+    createWritable(): Promise<FileSystemWritableFileStream>;
+  }
+}
+
+export interface HardwareTierConfig {
+  tier: HardwareTier;
+  label: string;
+  maxVramGB: number;
+  presets: Record<PreferenceMode, TierPreset>;
+}
