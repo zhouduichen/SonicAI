@@ -3,13 +3,14 @@
 import { useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
-import { House, MusicNotes, WaveSine, Books, Playlist, Disc, Microphone, Intersect, GridFour } from "@phosphor-icons/react";
+import { House, MusicNotes, WaveSine, Books, Playlist, Disc, Microphone, Intersect, GridFour, Gear } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import ThemeToggle from "./ThemeToggle";
 
 interface SidebarProps {
   activeTab: string;
   onTabChange: (tab: string) => void;
+  onSettingsClick: () => void;
 }
 
 const navItems = [
@@ -21,7 +22,7 @@ const navItems = [
   { id: "history", label: "ARCHIVE", sub: "生成记录", icon: Playlist },
 ];
 
-export default function Sidebar({ activeTab, onTabChange }: SidebarProps) {
+export default function Sidebar({ activeTab, onTabChange, onSettingsClick }: SidebarProps) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
@@ -120,6 +121,16 @@ export default function Sidebar({ activeTab, onTabChange }: SidebarProps) {
           );
         })}
       </nav>
+
+      <div className="px-4 mt-2">
+        <button onClick={onSettingsClick} className="nav-item">
+          <Gear size={18} weight="regular" style={{ color: "var(--text-tertiary)" }} />
+          <div className="text-left flex-1">
+            <p className="text-[10px] font-mono tracking-[0.1em]" style={{ color: "var(--text-tertiary)" }}>SETTINGS</p>
+            <p className="text-xs mt-0.5" style={{ color: "var(--text-secondary)" }}>硬件设置</p>
+          </div>
+        </button>
+      </div>
 
       {/* Bottom */}
       <div className="p-4" style={{ borderTop: "1px solid var(--border-color)" }}>

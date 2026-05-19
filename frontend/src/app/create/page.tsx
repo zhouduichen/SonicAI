@@ -12,7 +12,9 @@ import BatchConsole from "@/components/BatchConsole";
 import BlendPanel from "@/components/BlendPanel";
 import VoiceModelLibrary from "@/components/VoiceModelLibrary";
 import ErrorBoundary from "@/components/ErrorBoundary";
-import type { AudioAsset, StyleTag, GeneratedMusic, VoiceModel } from "@/types";
+import SettingsPanel from "@/components/SettingsPanel";
+import { getTierConfig } from "@/lib/hardware-tiers";
+import type { AudioAsset, StyleTag, GeneratedMusic, VoiceModel, HardwareTier, PreferenceMode } from "@/types";
 import {
   DEFAULT_VOCAL_SEPARATION_MODELS,
   DEFAULT_STYLE_EXTRACTION_MODELS,
@@ -172,10 +174,25 @@ export default function CreatePage() {
   const [voiceModels, setVoiceModels] = useState<VoiceModel[]>([]);
   const [selectedVoiceId, setSelectedVoiceId] = useState<string | undefined>(undefined);
 
-  // Model selection — controlled by user, sent to backend
-  const [vocalSepModel, setVocalSepModel] = useState("demucs_htdemucs");
-  const [styleExtractModel, setStyleExtractModel] = useState("clap_laion");
-  const [musicGenModel, setMusicGenModel] = useState("musicgen_small");
+  // Model selection — controlled by user, sent to backend; initialized from localStorage or tier defaults
+  const [vocalSepModel, setVocalSepModel] = useState(() => {
+    if (typeof window === "undefined") return "demucs_htdemucs";
+    const saved = localStorage.getItem("sonicai_vocal_sep");
+    if (saved) return saved;
+    return getTierConfig("mid")?.presets["speed"].vocalSepModel ?? "demucs_htdemucs";
+  });
+  const [styleExtractModel, setStyleExtractModel] = useState(() => {
+    if (typeof window === "undefined") return "clap_laion";
+    const saved = localStorage.getItem("sonicai_style_extract");
+    if (saved) return saved;
+    return getTierConfig("mid")?.presets["speed"].styleExtractModel ?? "clap_laion";
+  });
+  const [musicGenModel, setMusicGenModel] = useState(() => {
+    if (typeof window === "undefined") return "musicgen_small";
+    const saved = localStorage.getItem("sonicai_music_gen");
+    if (saved) return saved;
+    return getTierConfig("mid")?.presets["speed"].musicGenModel ?? "musicgen_small";
+  });
   const [blendMusicGenModel, setBlendMusicGenModel] = useState("musicgen_small");
 
   // Start empty — all data comes from the backend
@@ -183,6 +200,18 @@ export default function CreatePage() {
   const [playlist, setPlaylist] = useState<GeneratedMusic[]>([]);
 
   const [isGenerating, setIsGenerating] = useState(false);
+
+  const [showSettings, setShowSettings] = useState(false);
+
+  const [hardwareTier, setHardwareTier] = useState<HardwareTier>(() => {
+    if (typeof window === "undefined") return "mid";
+    return (localStorage.getItem("sonicai_tier") as HardwareTier) || "mid";
+  });
+  const [preference, setPreference] = useState<PreferenceMode>(() => {
+    if (typeof window === "undefined") return "speed";
+    return (localStorage.getItem("sonicai_preference") as PreferenceMode) || "speed";
+  });
+
   const [isBlendGenerating, setIsBlendGenerating] = useState(false);
 
   // Batch state
@@ -194,6 +223,47 @@ export default function CreatePage() {
 
   const [currentPlayingId, setCurrentPlayingId] = useState<string | null>(null);
   const [currentPlayingMusic, setCurrentPlayingMusic] = useState<GeneratedMusic | null>(null);
+
+  const handleTierChange = (tier: HardwareTier) => {
+    setHardwareTier(tier);
+    localStorage.setItem("sonicai_tier", tier);
+    const preset = getTierConfig(tier)?.presets[preference];
+    if (preset) {
+      setVocalSepModel(preset.vocalSepModel);
+      setStyleExtractModel(preset.styleExtractModel);
+      setMusicGenModel(preset.musicGenModel);
+      localStorage.setItem("sonicai_vocal_sep", preset.vocalSepModel);
+      localStorage.setItem("sonicai_style_extract", preset.styleExtractModel);
+      localStorage.setItem("sonicai_music_gen", preset.musicGenModel);
+    }
+  };
+
+  const handlePreferenceChange = (mode: PreferenceMode) => {
+    setPreference(mode);
+    localStorage.setItem("sonicai_preference", mode);
+    const preset = getTierConfig(hardwareTier)?.presets[mode];
+    if (preset) {
+      setVocalSepModel(preset.vocalSepModel);
+      setStyleExtractModel(preset.styleExtractModel);
+      setMusicGenModel(preset.musicGenModel);
+      localStorage.setItem("sonicai_vocal_sep", preset.vocalSepModel);
+      localStorage.setItem("sonicai_style_extract", preset.styleExtractModel);
+      localStorage.setItem("sonicai_music_gen", preset.musicGenModel);
+    }
+  };
+
+  const handleVocalSepModelChange = (key: string) => {
+    setVocalSepModel(key);
+    localStorage.setItem("sonicai_vocal_sep", key);
+  };
+  const handleStyleExtractModelChange = (key: string) => {
+    setStyleExtractModel(key);
+    localStorage.setItem("sonicai_style_extract", key);
+  };
+  const handleMusicGenModelChange = (key: string) => {
+    setMusicGenModel(key);
+    localStorage.setItem("sonicai_music_gen", key);
+  };
 
   const handleUpload = useCallback(async (file: File) => {
     try {
@@ -454,7 +524,7 @@ export default function CreatePage() {
 
   return (
     <div className="flex min-h-[100dvh]">
-      <Sidebar activeTab={activeTab} onTabChange={setActiveTab} />
+      <Sidebar activeTab={activeTab} onTabChange={setActiveTab} onSettingsClick={() => setShowSettings(true)} />
 
       <main className="flex-1 ml-60 p-8">
         <div className="max-w-7xl mx-auto space-y-6">
@@ -491,8 +561,8 @@ export default function CreatePage() {
                         asset={currentAsset}
                         vocalSepModel={vocalSepModel}
                         styleExtractModel={styleExtractModel}
-                        onVocalSepModelChange={setVocalSepModel}
-                        onStyleExtractModelChange={setStyleExtractModel}
+                        onVocalSepModelChange={handleVocalSepModelChange}
+                        onStyleExtractModelChange={handleStyleExtractModelChange}
                         vocalSepModels={DEFAULT_VOCAL_SEPARATION_MODELS}
                         styleExtractModels={DEFAULT_STYLE_EXTRACTION_MODELS}
                       />
@@ -517,7 +587,7 @@ export default function CreatePage() {
                         isGenerating={isGenerating}
                         onGenerate={handleGenerate}
                         musicGenModel={musicGenModel}
-                        onMusicGenModelChange={setMusicGenModel}
+                        onMusicGenModelChange={handleMusicGenModelChange}
                         musicGenModels={DEFAULT_MUSIC_GENERATION_MODELS}
                       />
                     </ErrorBoundary>
@@ -648,6 +718,24 @@ export default function CreatePage() {
           </AnimatePresence>
         </div>
       </main>
+
+      <SettingsPanel
+        open={showSettings}
+        onClose={() => setShowSettings(false)}
+        tier={hardwareTier}
+        onTierChange={handleTierChange}
+        preference={preference}
+        onPreferenceChange={handlePreferenceChange}
+        vocalSepModels={DEFAULT_VOCAL_SEPARATION_MODELS}
+        styleExtractModels={DEFAULT_STYLE_EXTRACTION_MODELS}
+        musicGenModels={DEFAULT_MUSIC_GENERATION_MODELS}
+        vocalSepModel={vocalSepModel}
+        styleExtractModel={styleExtractModel}
+        musicGenModel={musicGenModel}
+        onVocalSepModelChange={handleVocalSepModelChange}
+        onStyleExtractModelChange={handleStyleExtractModelChange}
+        onMusicGenModelChange={handleMusicGenModelChange}
+      />
     </div>
   );
 }

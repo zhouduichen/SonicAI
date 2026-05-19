@@ -1,0 +1,3 @@
+[submodule "backend/app/services/rvc"]
+	path = backend/app/services/rvc
+	url = https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI.git
