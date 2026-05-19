@@ -58,10 +58,14 @@ export default function Playlist({ items, currentPlayingId, onPlay }: PlaylistPr
                     exit={{ opacity: 0, y: -8 }}
                     transition={{ duration: 0.25 }}
                     onClick={() => onPlay(item)}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onPlay(item); } }}
+                    role="button"
+                    tabIndex={0}
+                    aria-pressed={active}
                     className="group flex items-center gap-4 px-4 py-3 cursor-pointer transition-all duration-300"
                     style={{
                       background: active ? "var(--accent-soft)" : "transparent",
-                      borderLeft: active ? "2px solid var(--accent)" : "2px solid transparent",
+                      border: active ? "1px solid var(--accent)" : "1px solid transparent",
                       borderRadius: 8,
                     }}
                   >

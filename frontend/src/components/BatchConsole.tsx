@@ -178,7 +178,7 @@ export default function BatchConsole({
                                     ? (isPlaying ? "var(--accent)" : "var(--accent-soft)")
                                     : "var(--bg-tertiary)",
                                   color: cell.status === "completed"
-                                    ? (isPlaying ? "#fff" : "var(--accent)")
+                                    ? (isPlaying ? "var(--bg-primary)" : "var(--accent)")
                                     : "var(--text-tertiary)",
                                   border: "1px solid var(--border-color)",
                                   cursor: cell.status === "completed" ? "pointer" : "default",

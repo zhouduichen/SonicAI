@@ -59,10 +59,14 @@ export default function StyleLibrary({ styles, onSelect, onDelete, selectedId }:
                     exit={{ opacity: 0, x: -8 }}
                     transition={{ duration: 0.25 }}
                     onClick={() => onSelect(style)}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect(style); } }}
+                    role="button"
+                    tabIndex={0}
+                    aria-pressed={active}
                     className="group flex items-center gap-3 px-4 py-3 cursor-pointer transition-all duration-300"
                     style={{
                       background: active ? "var(--accent-soft)" : "transparent",
-                      borderLeft: active ? "2px solid var(--accent)" : "2px solid transparent",
+                      border: active ? "1px solid var(--accent)" : "1px solid transparent",
                       borderRadius: 8,
                     }}
                   >

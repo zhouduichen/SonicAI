@@ -169,8 +169,8 @@ export default function MusicPlayer({ music, hasPrev, hasNext, onPrev, onNext }:
           {/* Track info */}
           <div className="flex items-center justify-between">
             <div className="min-w-0">
-              <p className="text-sm italic font-medium truncate"
-                style={{ color: "var(--text-primary)", fontFamily: "'Playfair Display', serif" }}>
+              <p className="text-sm font-semibold truncate"
+                style={{ color: "var(--text-primary)" }}>
                 {music.title}
               </p>
               <p className="text-[10px] font-mono tracking-[0.1em] uppercase truncate mt-0.5"
@@ -180,7 +180,8 @@ export default function MusicPlayer({ music, hasPrev, hasNext, onPrev, onNext }:
             </div>
             <button className="p-2 transition-colors rounded-full"
               style={{ color: "var(--text-tertiary)" }}
-              onClick={handleDownload}>
+              onClick={handleDownload}
+              aria-label="下载音乐">
               <Download size={16} weight="regular" />
             </button>
           </div>
@@ -214,6 +215,13 @@ export default function MusicPlayer({ music, hasPrev, hasNext, onPrev, onNext }:
 
           {/* Progress bar */}
           <div
+            role="slider"
+            aria-label="播放进度"
+            aria-valuemin={0}
+            aria-valuemax={duration || 100}
+            aria-valuenow={currentTime}
+            aria-valuetext={formatTime(currentTime)}
+            tabIndex={0}
             className="h-1 cursor-pointer group relative rounded-full"
             style={{ background: "var(--bg-tertiary)" }}
             onClick={handleSeek}
@@ -240,6 +248,7 @@ export default function MusicPlayer({ music, hasPrev, hasNext, onPrev, onNext }:
               <button
                 onClick={onPrev}
                 disabled={!hasPrev}
+                aria-label="上一首"
                 className="p-1.5 transition-colors rounded-full disabled:opacity-30"
                 style={{ color: hasPrev ? "var(--text-secondary)" : "var(--text-tertiary)" }}
               >
@@ -248,6 +257,7 @@ export default function MusicPlayer({ music, hasPrev, hasNext, onPrev, onNext }:
 
               <button
                 onClick={togglePlay}
+                aria-label={isPlaying ? "暂停" : "播放"}
                 className="w-12 h-12 rotate-45 flex items-center justify-center transition-all active:scale-90"
                 style={{
                   background: "var(--accent)",
@@ -255,14 +265,15 @@ export default function MusicPlayer({ music, hasPrev, hasNext, onPrev, onNext }:
                 }}
               >
                 {isPlaying
-                  ? <Pause size={18} weight="fill" className="-rotate-45" style={{ color: "#1a1814" }} />
-                  : <Play size={18} weight="fill" className="-rotate-45 ml-0.5" style={{ color: "#1a1814" }} />
+                  ? <Pause size={18} weight="fill" className="-rotate-45" style={{ color: "var(--bg-primary)" }} />
+                  : <Play size={18} weight="fill" className="-rotate-45 ml-0.5" style={{ color: "var(--bg-primary)" }} />
                 }
               </button>
 
               <button
                 onClick={onNext}
                 disabled={!hasNext}
+                aria-label="下一首"
                 className="p-1.5 transition-colors rounded-full disabled:opacity-30"
                 style={{ color: hasNext ? "var(--text-secondary)" : "var(--text-tertiary)" }}
               >

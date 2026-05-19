@@ -96,6 +96,9 @@ export default function GenerationConsole({
 
         {/* Textarea */}
         <div className="relative">
+          <label className="text-[10px] font-mono tracking-[0.1em] uppercase mb-1 block" style={{ color: "var(--text-tertiary)" }}>
+            音乐描述
+          </label>
           <textarea
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}

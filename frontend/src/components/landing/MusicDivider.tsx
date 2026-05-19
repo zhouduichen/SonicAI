@@ -3,7 +3,7 @@ export default function MusicDivider() {
     <div className="relative py-8 overflow-hidden">
       {/* Animated waveform bars */}
       <div className="flex items-end justify-center gap-[2px] h-12 opacity-[0.12]">
-        {Array.from({ length: 64 }).map((_, i) => {
+        {Array.from({ length: 48 }).map((_, i) => {
           const baseHeight = 8 + Math.abs(Math.sin(i * 0.18)) * 36;
           const duration = 0.7 + Math.abs(Math.sin(i * 0.37)) * 1.6;
           const delay = Math.abs(Math.cos(i * 0.23)) * 1.2;

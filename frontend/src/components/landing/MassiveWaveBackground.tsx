@@ -5,7 +5,7 @@ function rng(seed: number) {
   return x - Math.floor(x);
 }
 
-const TOTAL = 520;
+const TOTAL = 180;
 
 interface Dot {
   x: number;
@@ -80,7 +80,7 @@ export default function MassiveWaveBackground() {
             "--dx": `${d.driftX}px`,
             "--dy": `${d.driftY}px`,
             animation: `particle-drift ${d.speed}s ease-in-out ${d.delay}s infinite`,
-            willChange: "transform, opacity",
+            willChange: d.glow > 6 ? "transform, opacity" : "auto",
           } as React.CSSProperties}
         />
       ))}

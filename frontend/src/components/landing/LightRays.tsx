@@ -10,8 +10,12 @@ export default function LightRays() {
     if (!el) return;
 
     let raf: number;
+    let pending = false;
     const handleMove = (e: MouseEvent) => {
+      if (pending) return;
+      pending = true;
       raf = requestAnimationFrame(() => {
+        pending = false;
         const x = (e.clientX / window.innerWidth) * 100;
         const y = (e.clientY / window.innerHeight) * 100;
         el.style.setProperty("--mx", `${x}%`);

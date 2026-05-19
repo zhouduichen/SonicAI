@@ -46,7 +46,7 @@ export default function HowItWorks() {
                     border: "1px solid rgba(212, 168, 83, 0.2)",
                     animation: `beat-pulse ${3 + i * 0.5}s ease-in-out ${i * 0.3}s infinite`,
                   }}>
-                  <Icon size={26} weight="regular" style={{ color: "var(--accent)" }} />
+                  <Icon size={26} weight="regular" style={{ color: "var(--accent)" }} aria-hidden="true" />
                 </div>
 
                 {/* Title */}

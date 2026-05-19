@@ -17,9 +17,10 @@ interface ModelSelectorProps {
 
 function ProConItem({ text, kind }: { text: string; kind: "pro" | "con" }) {
   return (
-    <li
+    <div
       className="flex items-start gap-1.5 text-[11px] leading-snug"
       style={{ color: kind === "pro" ? "var(--accent)" : "var(--text-tertiary)" }}
+      aria-hidden="true"
     >
       <span className="mt-[3px] flex-shrink-0">
         {kind === "pro" ? (
@@ -35,7 +36,7 @@ function ProConItem({ text, kind }: { text: string; kind: "pro" | "con" }) {
         )}
       </span>
       <span>{text}</span>
-    </li>
+    </div>
   );
 }
 
@@ -115,6 +116,8 @@ export default function ModelSelector({
       {open && (
         <motion.div
           ref={dropdownRef}
+          role="listbox"
+          aria-label={label}
           initial={{ opacity: 0, y: -4, scale: 0.98 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: -4, scale: 0.98 }}
@@ -137,14 +140,23 @@ export default function ModelSelector({
           {options.map((model) => {
             const active = model.key === selected;
             return (
-              <button
+              <div
                 key={model.key}
-                type="button"
+                role="option"
+                aria-selected={active}
+                tabIndex={0}
                 onClick={() => {
                   onChange(model.key);
                   setOpen(false);
                 }}
-                className="w-full text-left transition-all duration-200"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onChange(model.key);
+                    setOpen(false);
+                  }
+                }}
+                className="w-full text-left transition-all duration-200 cursor-pointer focus-visible:outline-none"
                 style={{
                   background: active ? "var(--accent-soft)" : "transparent",
                   border: active
@@ -153,6 +165,7 @@ export default function ModelSelector({
                   borderRadius: 10,
                   padding: "12px 14px",
                   marginBottom: 4,
+                  outline: "none",
                 }}
               >
                 {/* Header row */}
@@ -224,22 +237,22 @@ export default function ModelSelector({
                     style={{ borderTop: "1px solid var(--border-light)" }}
                   >
                     {model.pros.length > 0 && (
-                      <ul className="space-y-0.5">
+                      <div className="space-y-0.5">
                         {model.pros.map((p, i) => (
                           <ProConItem key={`pro-${i}`} text={p} kind="pro" />
                         ))}
-                      </ul>
+                      </div>
                     )}
                     {model.cons.length > 0 && (
-                      <ul className="space-y-0.5">
+                      <div className="space-y-0.5">
                         {model.cons.map((c, i) => (
                           <ProConItem key={`con-${i}`} text={c} kind="con" />
                         ))}
-                      </ul>
+                      </div>
                     )}
                   </div>
                 )}
-              </button>
+              </div>
             );
           })}
         </motion.div>
@@ -265,6 +278,9 @@ export default function ModelSelector({
         ref={triggerRef}
         type="button"
         onClick={handleToggle}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={label}
         className="w-full flex items-center gap-2 px-3 py-2 transition-all duration-200"
         style={{
           background: "var(--bg-tertiary)",

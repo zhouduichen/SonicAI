@@ -99,6 +99,7 @@ export default function BlendPanel({
                 <button
                   key={s.id}
                   onClick={() => toggleStyle(Number(s.id))}
+                  aria-pressed={active}
                   className="px-3 py-1.5 rounded-full text-xs font-medium transition-all"
                   style={{
                     background: active ? "var(--accent-soft)" : "var(--bg-tertiary)",
@@ -136,15 +137,16 @@ export default function BlendPanel({
               const pct = Math.round(((weights[i] || 0) / Math.max(totalWeight, 1)) * 100);
               return (
                 <div key={styleId} className="flex items-center gap-3">
-                  <span className="text-xs w-20 truncate" style={{ color: "var(--text-primary)" }}>
+                  <label className="text-xs w-20 truncate" style={{ color: "var(--text-primary)" }}>
                     {style?.name || `风格${i + 1}`}
-                  </span>
+                  </label>
                   <input
                     type="range"
                     min={0}
                     max={100}
                     value={pct}
                     onChange={(e) => setWeight(i, Number(e.target.value) / 100)}
+                    aria-label={`${style?.name || `风格${i + 1}`} 混合比例`}
                     className="flex-1 h-1.5 rounded-full appearance-none cursor-pointer"
                     style={{ accentColor: "var(--accent)" }}
                   />

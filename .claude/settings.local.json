@@ -74,7 +74,10 @@
       "Bash(\"/c/Program Files/nodejs/node\" -e \"const http=require\\('http'\\);http.get\\('http://localhost:3001',r=>{}\\);\")",
       "Bash(\"/c/Program Files/nodejs/node\" -e \"require\\('child_process'\\).execSync\\('taskkill /F /FI \\\\\"WINDOWTITLE eq *next*\\\\\" 2>nul & taskkill /F /IM node.exe 2>nul',{stdio:'ignore'}\\);\")",
       "Bash(cmd.exe /c \"where node\")",
-      "Bash(cmd.exe /c \"npx tsc --noEmit\")"
+      "Bash(cmd.exe /c \"npx tsc --noEmit\")",
+      "Bash(export PATH=\"/c/Program Files/nodejs:$PATH\")",
+      "Bash(taskkill //F //IM python.exe)",
+      "Bash(uvicorn app.main:app --port 8000)"
     ]
   }
 }
