@@ -33,9 +33,22 @@ class LocalDemucsProvider(VocalSepProvider):
         return self._key
 
     def load(self) -> None:
+        if not DEMUCS_AVAILABLE and not self._has_onnx():
+            self._loaded = True  # Mock
+            logger.info(f"Mock Demucs ({self._key}) ready")
+            return
         self._loaded = True
         if not DEMUCS_AVAILABLE:
-            logger.info(f"Mock Demucs ({self._key}) ready")
+            logger.info(f"ONNX Demucs ({self._key}) ready")
+
+    def _has_onnx(self) -> bool:
+        import json
+        import os as _os
+        manifest = _os.path.join(_os.path.expanduser("~/.sonicai/models"), "model_manifest.json")
+        if not _os.path.exists(manifest):
+            return False
+        with open(manifest, "r") as f:
+            return self._key in json.load(f)
 
     def unload(self) -> None:
         self._loaded = False
@@ -45,6 +58,16 @@ class LocalDemucsProvider(VocalSepProvider):
 
     def vram_required(self) -> float:
         return {"demucs_htdemucs": 6.5, "demucs_mdx_extra": 5.0, "demucs_6s": 4.5, "spleeter_2stems": 1.5, "spleeter_5stems": 2.0}.get(self._key, 5.0)
+
+    def time_estimate(self, duration_seconds: int = 30) -> float:
+        base = {"demucs_htdemucs": 60, "demucs_mdx_extra": 40, "demucs_6s": 50, "spleeter_2stems": 15, "spleeter_5stems": 25}
+        t = base.get(self._key, 40)
+        if not self.supports_gpu() and not DEMUCS_AVAILABLE:
+            t *= 3  # CPU penalty
+        return t * (duration_seconds / 30)
+
+    def supports_gpu(self) -> bool:
+        return self._key.startswith("demucs") and DEMUCS_AVAILABLE
 
     # Map registry keys to demucs model names (they differ for some variants)
     _DEMUCS_MODEL_MAP = {
