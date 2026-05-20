@@ -50,6 +50,16 @@ class LocalCLAPProvider(StyleExtractProvider):
     def vram_required(self) -> float:
         return {"clap_laion": 1.2, "clap_msclap": 1.5, "clap_htsat": 3.0, "encodec_6kbps": 0.8}.get(self._key, 1.5)
 
+    def time_estimate(self, duration_seconds: int = 30) -> float:
+        base = {"clap_laion": 15, "clap_msclap": 20, "clap_htsat": 40, "encodec_6kbps": 8}
+        t = base.get(self._key, 20)
+        if not self.supports_gpu() and not CLAP_AVAILABLE:
+            t *= 3
+        return t * (duration_seconds / 30)
+
+    def supports_gpu(self) -> bool:
+        return CLAP_AVAILABLE
+
     def extract(self, audio_path: str) -> list[float]:
         dim_map = {"clap_laion": 512, "clap_msclap": 1024, "clap_htsat": 512, "encodec_6kbps": 128}
         dim = dim_map.get(self._key, 512)

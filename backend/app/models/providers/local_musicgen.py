@@ -80,6 +80,16 @@ class LocalMusicGenProvider(MusicGenProvider):
     def vram_required(self) -> float:
         return {"musicgen_small": 2.5, "musicgen_medium": 5.0, "musicgen_large": 8.0, "musicgen_melody": 5.5, "audioldm2": 6.0}.get(self._key, 5.0)
 
+    def time_estimate(self, duration_seconds: int = 30) -> float:
+        base = {"musicgen_small": 45, "musicgen_medium": 90, "musicgen_large": 180, "musicgen_melody": 100, "audioldm2": 120}
+        t = base.get(self._key, 90)
+        if not self.supports_gpu():
+            t *= 3
+        return t * (duration_seconds / 30)
+
+    def supports_gpu(self) -> bool:
+        return MUSICGEN_AVAILABLE
+
     def generate(self, embedding: list[float], text_prompt: str) -> dict:
         os.makedirs(settings.GENERATED_DIR, exist_ok=True)
         output_filename = f"generated_{uuid.uuid4().hex[:8]}.wav"
