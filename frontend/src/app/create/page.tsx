@@ -167,32 +167,33 @@ async function apiPollVoiceStatus(modelId: string): Promise<{ status: string; cu
   return res.json();
 }
 
+async function apiSingVoice(voiceModelId: string, referenceAudioId: string): Promise<{ generation_id: number }> {
+  const res = await fetch(`${API_BASE}/voice/sing`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(await authHeaders()) },
+    body: JSON.stringify({ voice_model_id: Number(voiceModelId), reference_audio_id: Number(referenceAudioId) }),
+  });
+  if (!res.ok) throw new Error("Vocal generation failed");
+  return res.json();
+}
+
 export default function CreatePage() {
   const [activeTab, setActiveTab] = useState("studio");
-  const [currentAsset, setCurrentAsset] = useState<AudioAsset | null>(null);
+  const [uploadingAssets, setUploadingAssets] = useState<AudioAsset[]>([]);
   const [selectedStyle, setSelectedStyle] = useState<StyleTag | null>(null);
   const [voiceModels, setVoiceModels] = useState<VoiceModel[]>([]);
   const [selectedVoiceId, setSelectedVoiceId] = useState<string | undefined>(undefined);
+  const [trainVoiceName, setTrainVoiceName] = useState("");
+  const [trainQualityTarget, setTrainQualityTarget] = useState("premium");
+  const [trainAssetId, setTrainAssetId] = useState("");
+  const [isTraining, setIsTraining] = useState(false);
+  const [singRefAssetId, setSingRefAssetId] = useState("");
+  const [isSinging, setIsSinging] = useState(false);
 
-  // Model selection — controlled by user, sent to backend; initialized from localStorage or tier defaults
-  const [vocalSepModel, setVocalSepModel] = useState(() => {
-    if (typeof window === "undefined") return "demucs_htdemucs";
-    const saved = localStorage.getItem("sonicai_vocal_sep");
-    if (saved) return saved;
-    return getTierConfig("mid")?.presets["speed"].vocalSepModel ?? "demucs_htdemucs";
-  });
-  const [styleExtractModel, setStyleExtractModel] = useState(() => {
-    if (typeof window === "undefined") return "clap_laion";
-    const saved = localStorage.getItem("sonicai_style_extract");
-    if (saved) return saved;
-    return getTierConfig("mid")?.presets["speed"].styleExtractModel ?? "clap_laion";
-  });
-  const [musicGenModel, setMusicGenModel] = useState(() => {
-    if (typeof window === "undefined") return "musicgen_small";
-    const saved = localStorage.getItem("sonicai_music_gen");
-    if (saved) return saved;
-    return getTierConfig("mid")?.presets["speed"].musicGenModel ?? "musicgen_small";
-  });
+  // Model selection — controlled by user, sent to backend
+  const [vocalSepModel, setVocalSepModel] = useState("demucs_htdemucs");
+  const [styleExtractModel, setStyleExtractModel] = useState("clap_laion");
+  const [musicGenModel, setMusicGenModel] = useState("musicgen_small");
   const [blendMusicGenModel, setBlendMusicGenModel] = useState("musicgen_small");
 
   // Start empty — all data comes from the backend
@@ -203,14 +204,8 @@ export default function CreatePage() {
 
   const [showSettings, setShowSettings] = useState(false);
 
-  const [hardwareTier, setHardwareTier] = useState<HardwareTier>(() => {
-    if (typeof window === "undefined") return "mid";
-    return (localStorage.getItem("sonicai_tier") as HardwareTier) || "mid";
-  });
-  const [preference, setPreference] = useState<PreferenceMode>(() => {
-    if (typeof window === "undefined") return "speed";
-    return (localStorage.getItem("sonicai_preference") as PreferenceMode) || "speed";
-  });
+  const [hardwareTier, setHardwareTier] = useState<HardwareTier>("mid");
+  const [preference, setPreference] = useState<PreferenceMode>("speed");
 
   const [isBlendGenerating, setIsBlendGenerating] = useState(false);
 
@@ -266,23 +261,31 @@ export default function CreatePage() {
   };
 
   const handleUpload = useCallback(async (file: File) => {
+    const tempId = Date.now().toString() + Math.random().toString(36).slice(2, 6);
+    const newAsset: AudioAsset = {
+      id: tempId,
+      fileName: file.name,
+      filePath: "",
+      status: "processing",
+      uploadedAt: new Date().toISOString(),
+    };
+
+    setUploadingAssets((prev) => [...prev, newAsset]);
+
     try {
-      setCurrentAsset({
-        id: Date.now().toString(),
-        fileName: file.name,
-        filePath: "",
-        status: "processing",
-        uploadedAt: new Date().toISOString(),
-      });
       const { asset_id, task_id } = await uploadAudio(file, vocalSepModel, styleExtractModel);
-      setCurrentAsset((prev) => prev ? { ...prev, id: String(asset_id), status: "processing" } : null);
+      setUploadingAssets((prev) =>
+        prev.map((a) => (a.id === tempId ? { ...a, id: String(asset_id) } : a))
+      );
 
       const interval = setInterval(async () => {
         try {
           const status = await pollAudioStatus(task_id);
           if (status.stage === "completed" && status.style_vector) {
             clearInterval(interval);
-            setCurrentAsset((prev) => prev ? { ...prev, status: "completed" } : null);
+            setUploadingAssets((prev) =>
+              prev.map((a) => (a.id === String(asset_id) ? { ...a, status: "completed" } : a))
+            );
             const sv = status.style_vector;
             const newStyle: StyleTag = {
               id: String(sv.id),
@@ -296,16 +299,27 @@ export default function CreatePage() {
               if (prev.some((s) => s.id === newStyle.id)) return prev;
               return [...prev, newStyle];
             });
-            setSelectedStyle(newStyle);
+            setSelectedStyle((prev) => prev || newStyle);
           } else if (status.stage === "failed") {
             clearInterval(interval);
-            setCurrentAsset((prev) => prev ? { ...prev, status: "failed" } : null);
+            setUploadingAssets((prev) =>
+              prev.map((a) => (a.id === String(asset_id) ? { ...a, status: "failed" } : a))
+            );
           }
         } catch { /* keep polling */ }
       }, 2000);
-      setTimeout(() => clearInterval(interval), 120000);
+      setTimeout(() => {
+        clearInterval(interval);
+        setUploadingAssets((prev) =>
+          prev.map((a) =>
+            a.id === String(asset_id) && a.status === "processing" ? { ...a, status: "failed" } : a
+          )
+        );
+      }, 120000);
     } catch {
-      setCurrentAsset((prev) => prev ? { ...prev, status: "failed" } : null);
+      setUploadingAssets((prev) =>
+        prev.map((a) => (a.id === tempId ? { ...a, status: "failed" } : a))
+      );
     }
   }, [vocalSepModel, styleExtractModel]);
 
@@ -463,6 +477,20 @@ export default function CreatePage() {
     }
   }, [selectedStyle]);
 
+  // Restore saved preferences from localStorage after hydration
+  useEffect(() => {
+    const tier = localStorage.getItem("sonicai_tier") as HardwareTier | null;
+    if (tier) setHardwareTier(tier);
+    const pref = localStorage.getItem("sonicai_preference") as PreferenceMode | null;
+    if (pref) setPreference(pref);
+    const vs = localStorage.getItem("sonicai_vocal_sep");
+    if (vs) setVocalSepModel(vs);
+    const se = localStorage.getItem("sonicai_style_extract");
+    if (se) setStyleExtractModel(se);
+    const mg = localStorage.getItem("sonicai_music_gen");
+    if (mg) setMusicGenModel(mg);
+  }, []);
+
   // Fetch voice models when switching to voice tab
   useEffect(() => {
     if (activeTab !== "voice") return;
@@ -522,6 +550,27 @@ export default function CreatePage() {
     } catch { /* training trigger failed */ }
   }, []);
 
+  const handleTrainVoiceClick = useCallback(async () => {
+    if (!trainAssetId || !trainVoiceName.trim()) return;
+    setIsTraining(true);
+    try {
+      await handleTrainVoice(Number(trainAssetId), trainVoiceName.trim(), trainQualityTarget);
+      setTrainVoiceName("");
+      setTrainAssetId("");
+    } catch { /* handled in handleTrainVoice */ }
+    setIsTraining(false);
+  }, [trainAssetId, trainVoiceName, trainQualityTarget, handleTrainVoice]);
+
+  const handleSingVoiceClick = useCallback(async () => {
+    if (!selectedVoiceId || !singRefAssetId) return;
+    setIsSinging(true);
+    try {
+      await apiSingVoice(selectedVoiceId, singRefAssetId);
+      setSingRefAssetId("");
+    } catch { /* silently fail */ }
+    setIsSinging(false);
+  }, [selectedVoiceId, singRefAssetId]);
+
   return (
     <div className="flex min-h-[100dvh]">
       <Sidebar activeTab={activeTab} onTabChange={setActiveTab} onSettingsClick={() => setShowSettings(true)} />
@@ -558,7 +607,7 @@ export default function CreatePage() {
                     <ErrorBoundary>
                       <Dropzone
                         onUpload={handleUpload}
-                        asset={currentAsset}
+                        assets={uploadingAssets}
                         vocalSepModel={vocalSepModel}
                         styleExtractModel={styleExtractModel}
                         onVocalSepModelChange={handleVocalSepModelChange}
@@ -691,13 +740,126 @@ export default function CreatePage() {
             )}
 
             {activeTab === "voice" && (
-              <motion.div key="voice" animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} transition={{ duration: 0.3 }} className="max-w-2xl">
+              <motion.div key="voice" animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} transition={{ duration: 0.3 }} className="max-w-2xl space-y-5">
+                {/* Train New Voice */}
+                <div className="card-outer">
+                  <div className="card-inner p-6 space-y-4">
+                    <div className="flex items-center gap-2">
+                      <span className="eyebrow">训练</span>
+                      <h3 className="text-lg italic font-medium" style={{ color: "var(--text-primary)", fontFamily: "'Playfair Display', serif" }}>
+                        训练新声音
+                      </h3>
+                    </div>
+                    <div className="space-y-3">
+                      <div>
+                        <p className="text-[10px] font-mono tracking-[0.1em] mb-1.5" style={{ color: "var(--text-tertiary)" }}>源音频</p>
+                        <select
+                          className="settings-select"
+                          value={trainAssetId}
+                          onChange={(e) => setTrainAssetId(e.target.value)}
+                          style={{ padding: "8px 36px 8px 12px", fontSize: "0.8125rem" }}
+                        >
+                          <option value="">选择已处理完成的音频...</option>
+                          {uploadingAssets.filter(a => a.status === "completed").map((a) => (
+                            <option key={a.id} value={a.id}>{a.fileName}</option>
+                          ))}
+                        </select>
+                        {uploadingAssets.filter(a => a.status === "completed").length === 0 && (
+                          <p className="text-xs mt-1" style={{ color: "var(--text-tertiary)" }}>
+                            请先在创作工作室上传并处理音频
+                          </p>
+                        )}
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-mono tracking-[0.1em] mb-1.5" style={{ color: "var(--text-tertiary)" }}>模型名称</p>
+                        <input
+                          type="text"
+                          placeholder="例如：我的歌声"
+                          value={trainVoiceName}
+                          onChange={(e) => setTrainVoiceName(e.target.value)}
+                          className="w-full px-4 py-2 rounded-xl text-sm"
+                          style={{ background: "var(--bg-primary)", border: "1px solid var(--border-color)", color: "var(--text-primary)", outline: "none", fontFamily: "'Plus Jakarta Sans', sans-serif" }}
+                        />
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-mono tracking-[0.1em] mb-1.5" style={{ color: "var(--text-tertiary)" }}>品质目标</p>
+                        <div className="flex gap-2">
+                          {[
+                            { key: "preview", label: "预览 (20 epochs)", desc: "~2分钟" },
+                            { key: "standard", label: "标准 (100 epochs)", desc: "~10分钟" },
+                            { key: "premium", label: "高品质 (200 epochs)", desc: "~20分钟" },
+                          ].map(({ key, label, desc }) => (
+                            <button
+                              key={key}
+                              onClick={() => setTrainQualityTarget(key)}
+                              className="flex-1 px-3 py-2.5 rounded-xl text-xs text-center transition-all duration-200"
+                              style={{
+                                background: trainQualityTarget === key ? "var(--accent-soft)" : "var(--bg-primary)",
+                                border: trainQualityTarget === key ? "1px solid var(--accent)" : "1px solid var(--border-color)",
+                                color: trainQualityTarget === key ? "var(--accent)" : "var(--text-secondary)",
+                                fontFamily: "'Plus Jakarta Sans', sans-serif",
+                                cursor: "pointer",
+                              }}
+                            >
+                              <div className="font-medium">{label}</div>
+                              <div className="text-[10px] mt-0.5 opacity-60">{desc}</div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <button
+                        className="btn-primary w-full"
+                        disabled={!trainAssetId || !trainVoiceName.trim() || isTraining}
+                        onClick={handleTrainVoiceClick}
+                      >
+                        {isTraining ? "提交中..." : "开始训练"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Voice Model Library */}
                 <VoiceModelLibrary
                   models={voiceModels}
                   selectedId={selectedVoiceId}
                   onSelect={(model) => setSelectedVoiceId(model.id)}
                   onDelete={handleDeleteVoice}
                 />
+
+                {/* Sing with selected voice */}
+                {selectedVoiceId && voiceModels.find(m => m.id === selectedVoiceId && m.status === "ready") && (
+                  <div className="card-outer">
+                    <div className="card-inner p-6 space-y-4">
+                      <div className="flex items-center gap-2">
+                        <span className="eyebrow">生成</span>
+                        <h3 className="text-lg italic font-medium" style={{ color: "var(--text-primary)", fontFamily: "'Playfair Display', serif" }}>
+                          使用已选声音生成
+                        </h3>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-mono tracking-[0.1em] mb-1.5" style={{ color: "var(--text-tertiary)" }}>参考音频</p>
+                        <select
+                          className="settings-select"
+                          value={singRefAssetId}
+                          onChange={(e) => setSingRefAssetId(e.target.value)}
+                          style={{ padding: "8px 36px 8px 12px", fontSize: "0.8125rem" }}
+                        >
+                          <option value="">选择参考音频...</option>
+                          {uploadingAssets.filter(a => a.status === "completed").map((a) => (
+                            <option key={a.id} value={a.id}>{a.fileName}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <button
+                        className="btn-primary w-full"
+                        disabled={!singRefAssetId || isSinging}
+                        onClick={handleSingVoiceClick}
+                      >
+                        {isSinging ? "生成中..." : "生成人声"}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </motion.div>
             )}
 
