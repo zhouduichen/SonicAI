@@ -11,22 +11,20 @@ import Playlist from "@/components/Playlist";
 import BatchConsole from "@/components/BatchConsole";
 import BlendPanel from "@/components/BlendPanel";
 import VoiceModelLibrary from "@/components/VoiceModelLibrary";
+import SongCreator from "@/components/SongCreator";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import SettingsPanel from "@/components/SettingsPanel";
 import { getTierConfig } from "@/lib/hardware-tiers";
-import type { AudioAsset, StyleTag, GeneratedMusic, VoiceModel, HardwareTier, PreferenceMode } from "@/types";
-import {
-  DEFAULT_VOCAL_SEPARATION_MODELS,
-  DEFAULT_STYLE_EXTRACTION_MODELS,
-  DEFAULT_MUSIC_GENERATION_MODELS,
-} from "@/lib/default-models";
+import { useModelCatalog } from "@/lib/use-model-catalog";
+import type { AudioAsset, StyleTag, GeneratedMusic, VoiceModel, HardwareTier, PreferenceMode, ProcessingMode, Song } from "@/types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
 let cachedToken: string | null = null;
+let tokenExpiry: number = 0;
 
 async function getToken(): Promise<string> {
-  if (cachedToken) return cachedToken;
+  if (cachedToken && Date.now() < tokenExpiry) return cachedToken;
   const res = await fetch(`${API_BASE}/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -35,6 +33,7 @@ async function getToken(): Promise<string> {
   if (!res.ok) throw new Error("Auth failed");
   const data = await res.json();
   cachedToken = data.access_token || null;
+  tokenExpiry = Date.now() + 23 * 60 * 60 * 1000; // refresh 1h before 24h expiry
   if (!cachedToken) throw new Error("No token in auth response");
   return cachedToken;
 }
@@ -43,16 +42,28 @@ async function authHeaders(): Promise<Record<string, string>> {
   return { Authorization: `Bearer ${await getToken()}` };
 }
 
+async function authFetch(url: string, init?: RequestInit): Promise<Response> {
+  let res = await fetch(url, { ...init, headers: { ...init?.headers, ...(await authHeaders()) } });
+  // Retry once on 401 with fresh token
+  if (res.status === 401) {
+    cachedToken = null;
+    tokenExpiry = 0;
+    res = await fetch(url, { ...init, headers: { ...init?.headers, ...(await authHeaders()) } });
+  }
+  return res;
+}
+
 async function uploadAudio(
   file: File,
   vocalSepModel: string,
   styleExtractModel: string,
+  processingMode: ProcessingMode = "sync",
 ): Promise<{ asset_id: number; task_id: string }> {
   const formData = new FormData();
   formData.append("file", file);
   formData.append("vocal_sep_model", vocalSepModel);
   formData.append("style_extract_model", styleExtractModel);
-  const res = await fetch(`${API_BASE}/audio/upload`, {
+  const res = await fetch(`${API_BASE}/audio/upload?processing_mode=${processingMode}`, {
     method: "POST",
     body: formData,
     headers: await authHeaders(),
@@ -73,8 +84,9 @@ async function apiGenerateMusic(
   vectorId: number,
   prompt: string,
   musicGenModel: string,
+  processingMode: ProcessingMode = "sync",
 ): Promise<{ task_id: string }> {
-  const res = await fetch(`${API_BASE}/music/generate`, {
+  const res = await fetch(`${API_BASE}/music/generate?processing_mode=${processingMode}`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...(await authHeaders()) },
     body: JSON.stringify({ style_vector_id: vectorId, text_prompt: prompt, music_gen_model: musicGenModel }),
@@ -95,8 +107,9 @@ async function apiBlendGenerate(
   blends: { style_vector_id: number; weight: number }[],
   prompt: string,
   musicGenModel: string,
+  processingMode: ProcessingMode = "sync",
 ): Promise<{ task_id: string }> {
-  const res = await fetch(`${API_BASE}/music/blend-generate`, {
+  const res = await fetch(`${API_BASE}/music/blend-generate?processing_mode=${processingMode}`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...(await authHeaders()) },
     body: JSON.stringify({ blends, text_prompt: prompt, music_gen_model: musicGenModel }),
@@ -109,8 +122,9 @@ async function apiBatchGenerate(
   styleVectorId: number,
   prompts: string[],
   models: string[],
+  processingMode: ProcessingMode = "sync",
 ): Promise<{ batch_id: string; tasks: { task_id: string; prompt: string; model: string }[] }> {
-  const res = await fetch(`${API_BASE}/music/generate-batch`, {
+  const res = await fetch(`${API_BASE}/music/generate-batch?processing_mode=${processingMode}`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...(await authHeaders()) },
     body: JSON.stringify({ style_vector_id: styleVectorId, prompts, music_gen_models: models }),
@@ -131,10 +145,14 @@ async function apiGetVoiceModels(): Promise<VoiceModel[]> {
   const res = await fetch(`${API_BASE}/voice/models`, { headers: await authHeaders() });
   if (!res.ok) return [];
   const data = await res.json();
-  return (data.items || []).map((item: any) => ({
+  interface VoiceModelItem {
+    id: number; name: string; source_audio_ids: string; status: string;
+    epoch: number; quality_tier: string; duration_seconds: number; created_at: string;
+  }
+  return (data.items || []).map((item: VoiceModelItem) => ({
     id: String(item.id),
     name: item.name,
-    sourceAudioId: String(item.source_audio_id || ""),
+    sourceAudioIds: (() => { try { return JSON.parse(item.source_audio_ids || "[]"); } catch { return []; } })(),
     status: item.status,
     epoch: item.epoch || 0,
     qualityTier: item.quality_tier || "preview",
@@ -143,11 +161,11 @@ async function apiGetVoiceModels(): Promise<VoiceModel[]> {
   }));
 }
 
-async function apiTrainVoice(audioAssetId: number, name: string, qualityTarget: string): Promise<{ model_id: number }> {
+async function apiTrainVoice(audioAssetIds: number[], name: string, qualityTarget: string): Promise<{ model_id: number }> {
   const res = await fetch(`${API_BASE}/voice/train`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...(await authHeaders()) },
-    body: JSON.stringify({ audio_asset_id: audioAssetId, name, quality_target: qualityTarget }),
+    body: JSON.stringify({ audio_asset_ids: audioAssetIds, name, quality_target: qualityTarget }),
   });
   if (!res.ok) throw new Error("Voice training failed");
   return res.json();
@@ -177,18 +195,43 @@ async function apiSingVoice(voiceModelId: string, referenceAudioId: string): Pro
   return res.json();
 }
 
+async function apiFetchSuggestions(styleVectorId: number): Promise<string[]> {
+  const res = await fetch(`${API_BASE}/music/suggestions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(await authHeaders()) },
+    body: JSON.stringify({ style_vector_id: styleVectorId }),
+  });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.suggestions || [];
+}
+
 export default function CreatePage() {
+  const { catalog: modelCatalog } = useModelCatalog();
+
+  const vocalSepModels = modelCatalog.vocal_separation;
+  const styleExtractModels = modelCatalog.style_extraction;
+  const musicGenModels = modelCatalog.music_generation;
+
   const [activeTab, setActiveTab] = useState("studio");
   const [uploadingAssets, setUploadingAssets] = useState<AudioAsset[]>([]);
   const [selectedStyle, setSelectedStyle] = useState<StyleTag | null>(null);
+  const [suggestions, setSuggestions] = useState<string[]>([
+    "一首适合深夜开车的 Lo-Fi 音乐",
+    "带有爵士钢琴元素的氛围电子乐",
+    "节奏轻快的夏日流行音乐",
+    "适合冥想的大自然白噪音",
+  ]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const [voiceModels, setVoiceModels] = useState<VoiceModel[]>([]);
   const [selectedVoiceId, setSelectedVoiceId] = useState<string | undefined>(undefined);
   const [trainVoiceName, setTrainVoiceName] = useState("");
   const [trainQualityTarget, setTrainQualityTarget] = useState("premium");
-  const [trainAssetId, setTrainAssetId] = useState("");
+  const [trainAssetIds, setTrainAssetIds] = useState<number[]>([]);
   const [isTraining, setIsTraining] = useState(false);
   const [singRefAssetId, setSingRefAssetId] = useState("");
   const [isSinging, setIsSinging] = useState(false);
+  const [songs, setSongs] = useState<Song[]>([]);
 
   // Model selection — controlled by user, sent to backend
   const [vocalSepModel, setVocalSepModel] = useState("demucs_htdemucs");
@@ -206,6 +249,7 @@ export default function CreatePage() {
 
   const [hardwareTier, setHardwareTier] = useState<HardwareTier>("mid");
   const [preference, setPreference] = useState<PreferenceMode>("speed");
+  const [processingMode, setProcessingMode] = useState<ProcessingMode>("sync");
 
   const [isBlendGenerating, setIsBlendGenerating] = useState(false);
 
@@ -260,6 +304,11 @@ export default function CreatePage() {
     localStorage.setItem("sonicai_music_gen", key);
   };
 
+  const handleProcessingModeChange = (mode: ProcessingMode) => {
+    setProcessingMode(mode);
+    localStorage.setItem("sonicai_processing_mode", mode);
+  };
+
   const handleUpload = useCallback(async (file: File) => {
     const tempId = Date.now().toString() + Math.random().toString(36).slice(2, 6);
     const newAsset: AudioAsset = {
@@ -273,7 +322,7 @@ export default function CreatePage() {
     setUploadingAssets((prev) => [...prev, newAsset]);
 
     try {
-      const { asset_id, task_id } = await uploadAudio(file, vocalSepModel, styleExtractModel);
+      const { asset_id, task_id } = await uploadAudio(file, vocalSepModel, styleExtractModel, processingMode);
       setUploadingAssets((prev) =>
         prev.map((a) => (a.id === tempId ? { ...a, id: String(asset_id) } : a))
       );
@@ -321,13 +370,13 @@ export default function CreatePage() {
         prev.map((a) => (a.id === tempId ? { ...a, status: "failed" } : a))
       );
     }
-  }, [vocalSepModel, styleExtractModel]);
+  }, [vocalSepModel, styleExtractModel, processingMode]);
 
   const handleGenerate = useCallback(async (prompt: string) => {
     if (!selectedStyle) return;
     setIsGenerating(true);
     try {
-      const { task_id } = await apiGenerateMusic(Number(selectedStyle.id), prompt, musicGenModel);
+      const { task_id } = await apiGenerateMusic(Number(selectedStyle.id), prompt, musicGenModel, processingMode);
       const interval = setInterval(async () => {
         try {
           const status = await pollMusicStatus(task_id);
@@ -357,7 +406,7 @@ export default function CreatePage() {
     } catch {
       setIsGenerating(false);
     }
-  }, [selectedStyle, musicGenModel]);
+  }, [selectedStyle, musicGenModel, processingMode]);
 
   const handlePlay = useCallback((music: GeneratedMusic) => {
     setCurrentPlayingMusic(music);
@@ -393,7 +442,7 @@ export default function CreatePage() {
   ) => {
     setIsBlendGenerating(true);
     try {
-      const { task_id } = await apiBlendGenerate(blends, prompt, blendMusicGenModel);
+      const { task_id } = await apiBlendGenerate(blends, prompt, blendMusicGenModel, processingMode);
       const interval = setInterval(async () => {
         try {
           const status = await pollMusicStatus(task_id);
@@ -423,7 +472,7 @@ export default function CreatePage() {
     } catch {
       setIsBlendGenerating(false);
     }
-  }, [blendMusicGenModel]);
+  }, [blendMusicGenModel, processingMode]);
 
   // ---- Batch generation ----
   const handleBatchGenerate = useCallback(async (prompts: string[], models: string[]) => {
@@ -431,7 +480,7 @@ export default function CreatePage() {
     setIsBatchGenerating(true);
     setBatchCells([]);
     try {
-      const { batch_id, tasks } = await apiBatchGenerate(Number(selectedStyle.id), prompts, models);
+      const { batch_id, tasks } = await apiBatchGenerate(Number(selectedStyle.id), prompts, models, processingMode);
       setBatchCells(tasks.map((t) => ({ ...t, status: "pending" })));
 
       const interval = setInterval(async () => {
@@ -475,7 +524,7 @@ export default function CreatePage() {
     } catch {
       setIsBatchGenerating(false);
     }
-  }, [selectedStyle]);
+  }, [selectedStyle, processingMode]);
 
   // Restore saved preferences from localStorage after hydration
   useEffect(() => {
@@ -489,11 +538,29 @@ export default function CreatePage() {
     if (se) setStyleExtractModel(se);
     const mg = localStorage.getItem("sonicai_music_gen");
     if (mg) setMusicGenModel(mg);
+    const pm = localStorage.getItem("sonicai_processing_mode") as ProcessingMode | null;
+    if (pm) setProcessingMode(pm);
   }, []);
 
-  // Fetch voice models when switching to voice tab
+  // Fetch suggestions when style changes
   useEffect(() => {
-    if (activeTab !== "voice") return;
+    if (!selectedStyle?.id) return;
+    let cancelled = false;
+    setSuggestionsLoading(true);
+    apiFetchSuggestions(Number(selectedStyle.id))
+      .then((items) => {
+        if (!cancelled && items.length > 0) setSuggestions(items);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setSuggestionsLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [selectedStyle?.id]);
+
+  // Fetch voice models when switching to voice or song tab
+  useEffect(() => {
+    if (activeTab !== "voice" && activeTab !== "song") return;
     let cancelled = false;
     apiGetVoiceModels().then((models) => {
       if (!cancelled) setVoiceModels(models);
@@ -503,28 +570,35 @@ export default function CreatePage() {
 
   // Poll training voice models
   useEffect(() => {
-    const trainingModels = voiceModels.filter((m) => m.status === "training" || m.status === "preprocessing");
-    if (trainingModels.length === 0) return;
+    const trainingIds = voiceModels
+      .filter((m) => m.status === "training" || m.status === "preprocessing")
+      .map((m) => m.id);
+    if (trainingIds.length === 0) return;
 
+    let active = true;
     const interval = setInterval(async () => {
+      if (!active) return;
       const updated = await Promise.all(
-        trainingModels.map(async (m) => {
+        trainingIds.map(async (id) => {
           try {
-            const status = await apiPollVoiceStatus(m.id);
-            return { ...m, status: status.status as VoiceModel["status"], epoch: status.current_epoch, qualityTier: (status.available_tiers[status.available_tiers.length - 1] || m.qualityTier) as VoiceModel["qualityTier"] };
-          } catch { return m; }
+            const status = await apiPollVoiceStatus(id);
+            return { id, status: status.status as VoiceModel["status"], epoch: status.current_epoch, qualityTier: (status.available_tiers[status.available_tiers.length - 1] || "preview") as VoiceModel["qualityTier"] };
+          } catch { return { id, status: "training" as const, epoch: 0, qualityTier: "preview" as const }; }
         })
       );
+      if (!active) return;
       setVoiceModels((prev) =>
-        prev.map((m) => updated.find((u) => u.id === m.id) || m)
+        prev.map((m) => {
+          const u = updated.find((x) => x.id === m.id);
+          return u && u.status !== "training" ? { ...m, status: u.status, epoch: u.epoch, qualityTier: u.qualityTier } : m;
+        })
       );
-      // Stop polling if all done
-      if (updated.every((m) => m.status === "ready" || m.status === "failed")) {
+      if (updated.every((x) => x.status === "ready" || x.status === "failed")) {
         clearInterval(interval);
       }
     }, 3000);
-    return () => clearInterval(interval);
-  }, [voiceModels.filter((m) => m.status === "training" || m.status === "preprocessing").length]);
+    return () => { active = false; clearInterval(interval); };
+  }, [voiceModels]);
 
   const handleDeleteVoice = useCallback(async (id: string) => {
     setVoiceModels((prev) => prev.filter((m) => m.id !== id));
@@ -532,14 +606,13 @@ export default function CreatePage() {
     await apiDeleteVoiceModel(id).catch(() => {});
   }, [selectedVoiceId]);
 
-  const handleTrainVoice = useCallback(async (audioAssetId: number, name: string, qualityTarget: string) => {
+  const handleTrainVoice = useCallback(async (audioAssetIds: number[], name: string, qualityTarget: string) => {
     try {
-      const { model_id } = await apiTrainVoice(audioAssetId, name, qualityTarget);
-      // Add optimistic model
+      const { model_id } = await apiTrainVoice(audioAssetIds, name, qualityTarget);
       const newModel: VoiceModel = {
         id: String(model_id),
         name,
-        sourceAudioId: String(audioAssetId),
+        sourceAudioIds: audioAssetIds,
         status: "preprocessing",
         epoch: 0,
         qualityTier: "preview",
@@ -551,15 +624,15 @@ export default function CreatePage() {
   }, []);
 
   const handleTrainVoiceClick = useCallback(async () => {
-    if (!trainAssetId || !trainVoiceName.trim()) return;
+    if (trainAssetIds.length === 0 || !trainVoiceName.trim()) return;
     setIsTraining(true);
     try {
-      await handleTrainVoice(Number(trainAssetId), trainVoiceName.trim(), trainQualityTarget);
+      await handleTrainVoice(trainAssetIds, trainVoiceName.trim(), trainQualityTarget);
       setTrainVoiceName("");
-      setTrainAssetId("");
+      setTrainAssetIds([]);
     } catch { /* handled in handleTrainVoice */ }
     setIsTraining(false);
-  }, [trainAssetId, trainVoiceName, trainQualityTarget, handleTrainVoice]);
+  }, [trainAssetIds, trainVoiceName, trainQualityTarget, handleTrainVoice]);
 
   const handleSingVoiceClick = useCallback(async () => {
     if (!selectedVoiceId || !singRefAssetId) return;
@@ -583,17 +656,17 @@ export default function CreatePage() {
             transition={{ duration: 0.5, ease: [0.32, 0.72, 0, 1] }}
           >
             <span className="eyebrow mb-2 inline-block">
-              {activeTab === "studio" ? "STUDIO" : activeTab === "library" ? "LIBRARY" : activeTab === "blend" ? "BLEND" : activeTab === "batch" ? "BATCH" : activeTab === "voice" ? "VOICE" : "ARCHIVE"}
+              {activeTab === "studio" ? "STUDIO" : activeTab === "library" ? "LIBRARY" : activeTab === "blend" ? "BLEND" : activeTab === "batch" ? "BATCH" : activeTab === "voice" ? "VOICE" : activeTab === "song" ? "SONG" : "ARCHIVE"}
             </span>
             <h2 className="text-3xl italic font-medium mt-1 tracking-tight"
               style={{ color: "var(--text-primary)", fontFamily: "'Playfair Display', serif" }}>
-              {activeTab === "studio" ? "AI 音乐创作" : activeTab === "library" ? "风格标签管理" : activeTab === "blend" ? "风格融合生成" : activeTab === "batch" ? "批量矩阵生成" : activeTab === "voice" ? "声音模型管理" : "生成历史记录"}
+              {activeTab === "studio" ? "AI 音乐创作" : activeTab === "library" ? "风格标签管理" : activeTab === "blend" ? "风格融合生成" : activeTab === "batch" ? "批量矩阵生成" : activeTab === "voice" ? "声音模型管理" : activeTab === "song" ? "AI 歌曲创作" : "生成历史记录"}
             </h2>
             <div className="flex items-center gap-3 mt-3">
               <div className="w-8 h-px" style={{ background: "var(--accent)", opacity: 0.4 }} />
               <div className="w-1 h-1 rotate-45" style={{ background: "var(--accent)", opacity: 0.3 }} />
               <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
-                {activeTab === "studio" ? "上传音频 → 选择风格标签 → 输入描述 → 生成专属音乐" : activeTab === "library" ? "查看、选择或删除已提取的音乐风格特征向量" : activeTab === "blend" ? "选择 2-3 个风格标签，调节混合比例，融合生成全新音乐" : activeTab === "batch" ? "多个提示词 × 多个模型，一键生成对比矩阵" : activeTab === "voice" ? "上传歌曲训练专属声音模型，选择模型生成人声" : "播放和回顾所有已生成的 AI 音乐作品"}
+                {activeTab === "studio" ? "上传音频 → 选择风格标签 → 输入描述 → 生成专属音乐" : activeTab === "library" ? "查看、选择或删除已提取的音乐风格特征向量" : activeTab === "blend" ? "选择 2-3 个风格标签，调节混合比例，融合生成全新音乐" : activeTab === "batch" ? "多个提示词 × 多个模型，一键生成对比矩阵" : activeTab === "voice" ? "上传歌曲训练专属声音模型，选择模型生成人声" : activeTab === "song" ? "输入主题 → AI 自动写词、编曲、人声、混音 → 完整歌曲" : "播放和回顾所有已生成的 AI 音乐作品"}
               </p>
             </div>
           </motion.div>
@@ -612,8 +685,8 @@ export default function CreatePage() {
                         styleExtractModel={styleExtractModel}
                         onVocalSepModelChange={handleVocalSepModelChange}
                         onStyleExtractModelChange={handleStyleExtractModelChange}
-                        vocalSepModels={DEFAULT_VOCAL_SEPARATION_MODELS}
-                        styleExtractModels={DEFAULT_STYLE_EXTRACTION_MODELS}
+                        vocalSepModels={vocalSepModels}
+                        styleExtractModels={styleExtractModels}
                       />
                     </ErrorBoundary>
                     <ErrorBoundary>
@@ -637,7 +710,9 @@ export default function CreatePage() {
                         onGenerate={handleGenerate}
                         musicGenModel={musicGenModel}
                         onMusicGenModelChange={handleMusicGenModelChange}
-                        musicGenModels={DEFAULT_MUSIC_GENERATION_MODELS}
+                        musicGenModels={musicGenModels}
+                        suggestions={suggestions}
+                        suggestionsLoading={suggestionsLoading}
                       />
                     </ErrorBoundary>
                     {currentPlayingMusic && (
@@ -680,7 +755,7 @@ export default function CreatePage() {
                     styles={styles}
                     musicGenModel={blendMusicGenModel}
                     onMusicGenModelChange={setBlendMusicGenModel}
-                    musicGenModels={DEFAULT_MUSIC_GENERATION_MODELS}
+                    musicGenModels={musicGenModels}
                     onGenerate={handleBlendGenerate}
                     isGenerating={isBlendGenerating}
                   />
@@ -703,7 +778,7 @@ export default function CreatePage() {
               <motion.div key="batch" animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} transition={{ duration: 0.3 }} className="max-w-4xl space-y-5">
                 <ErrorBoundary>
                   <BatchConsole
-                    musicGenModels={DEFAULT_MUSIC_GENERATION_MODELS}
+                    musicGenModels={musicGenModels}
                     onGenerate={handleBatchGenerate}
                     isGenerating={isBatchGenerating}
                     cells={batchCells}
@@ -752,22 +827,36 @@ export default function CreatePage() {
                     </div>
                     <div className="space-y-3">
                       <div>
-                        <p className="text-[10px] font-mono tracking-[0.1em] mb-1.5" style={{ color: "var(--text-tertiary)" }}>源音频</p>
-                        <select
-                          className="settings-select"
-                          value={trainAssetId}
-                          onChange={(e) => setTrainAssetId(e.target.value)}
-                          style={{ padding: "8px 36px 8px 12px", fontSize: "0.8125rem" }}
-                        >
-                          <option value="">选择已处理完成的音频...</option>
-                          {uploadingAssets.filter(a => a.status === "completed").map((a) => (
-                            <option key={a.id} value={a.id}>{a.fileName}</option>
-                          ))}
-                        </select>
-                        {uploadingAssets.filter(a => a.status === "completed").length === 0 && (
-                          <p className="text-xs mt-1" style={{ color: "var(--text-tertiary)" }}>
+                        <p className="text-[10px] font-mono tracking-[0.1em] mb-1.5" style={{ color: "var(--text-tertiary)" }}>
+                          源音频 ({trainAssetIds.length} 首已选)
+                        </p>
+                        {uploadingAssets.filter(a => a.status === "completed").length === 0 ? (
+                          <p className="text-xs" style={{ color: "var(--text-tertiary)" }}>
                             请先在创作工作室上传并处理音频
                           </p>
+                        ) : (
+                          <div className="space-y-1 max-h-40 overflow-y-auto" style={{ background: "var(--bg-primary)", borderRadius: "12px", padding: "8px", border: "1px solid var(--border-color)" }}>
+                            {uploadingAssets.filter(a => a.status === "completed").map((a) => {
+                              const checked = trainAssetIds.includes(Number(a.id));
+                              return (
+                                <label key={a.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer transition-colors"
+                                  style={{ background: checked ? "var(--accent-soft)" : "transparent" }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => {
+                                      const id = Number(a.id);
+                                      setTrainAssetIds(prev =>
+                                        checked ? prev.filter(x => x !== id) : [...prev, id]
+                                      );
+                                    }}
+                                    style={{ accentColor: "var(--accent)" }}
+                                  />
+                                  <span className="text-xs" style={{ color: "var(--text-primary)" }}>{a.fileName}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
                         )}
                       </div>
                       <div>
@@ -809,7 +898,7 @@ export default function CreatePage() {
                       </div>
                       <button
                         className="btn-primary w-full"
-                        disabled={!trainAssetId || !trainVoiceName.trim() || isTraining}
+                        disabled={trainAssetIds.length === 0 || !trainVoiceName.trim() || isTraining}
                         onClick={handleTrainVoiceClick}
                       >
                         {isTraining ? "提交中..." : "开始训练"}
@@ -863,6 +952,19 @@ export default function CreatePage() {
               </motion.div>
             )}
 
+            {activeTab === "song" && (
+              <motion.div key="song" animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} transition={{ duration: 0.3 }} className="max-w-2xl">
+                <SongCreator
+                  voiceModels={voiceModels}
+                  styles={styles}
+                  selectedStyle={selectedStyle}
+                  onStyleSelect={setSelectedStyle}
+                  playlist={playlist}
+                  onSongCreated={(song) => setSongs((prev) => [song, ...prev])}
+                />
+              </motion.div>
+            )}
+
             {activeTab === "history" && (
               <motion.div key="history" animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} transition={{ duration: 0.3 }} className="max-w-3xl space-y-5">
                 <Playlist items={playlist} currentPlayingId={currentPlayingId} onPlay={handlePlay} />
@@ -888,15 +990,17 @@ export default function CreatePage() {
         onTierChange={handleTierChange}
         preference={preference}
         onPreferenceChange={handlePreferenceChange}
-        vocalSepModels={DEFAULT_VOCAL_SEPARATION_MODELS}
-        styleExtractModels={DEFAULT_STYLE_EXTRACTION_MODELS}
-        musicGenModels={DEFAULT_MUSIC_GENERATION_MODELS}
+        vocalSepModels={vocalSepModels}
+        styleExtractModels={styleExtractModels}
+        musicGenModels={musicGenModels}
         vocalSepModel={vocalSepModel}
         styleExtractModel={styleExtractModel}
         musicGenModel={musicGenModel}
         onVocalSepModelChange={handleVocalSepModelChange}
         onStyleExtractModelChange={handleStyleExtractModelChange}
         onMusicGenModelChange={handleMusicGenModelChange}
+        processingMode={processingMode}
+        onProcessingModeChange={handleProcessingModeChange}
       />
     </div>
   );

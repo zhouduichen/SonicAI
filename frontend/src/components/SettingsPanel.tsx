@@ -1,8 +1,123 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { X, Gear } from "@phosphor-icons/react";
-import type { HardwareTier, PreferenceMode, ModelInfo } from "@/types";
-import { HARDWARE_TIERS, getTierConfig, getEstimatedTime } from "@/lib/hardware-tiers";
+import type { HardwareTier, PreferenceMode, ProcessingMode, ModelInfo } from "@/types";
+import { HARDWARE_TIERS, getTierConfig, getEstimatedTime, PROCESSING_MODE_LABELS } from "@/lib/hardware-tiers";
+
+interface BackendState {
+  running: boolean;
+  port: number;
+  managed: boolean;
+}
+
+function ServiceStatus() {
+  const [backend, setBackend] = useState<BackendState | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const res = await fetch("/api/services");
+        if (!res.ok) throw new Error("offline");
+        const data = await res.json();
+        if (!cancelled) { setBackend(data.backend ?? null); setError(null); }
+      } catch {
+        if (!cancelled) setError("无法连接到服务管理接口");
+      }
+    };
+    poll();
+    const i = setInterval(poll, 3000);
+    return () => { cancelled = true; clearInterval(i); };
+  }, []);
+
+  const call = async (action: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/services", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      const result = await res.json();
+      if (!result.ok) {
+        setError(result.message || `${action} 失败`);
+        return;
+      }
+      await new Promise((r) => setTimeout(r, 1500));
+      const pollRes = await fetch("/api/services");
+      const pollData = await pollRes.json();
+      setBackend(pollData.backend ?? null);
+    } catch {
+      setError(`${action} 请求失败`);
+    } finally { setBusy(false); }
+  };
+
+  const running = backend?.running ?? false;
+
+  return (
+    <div>
+      <p className="text-[10px] font-mono tracking-[0.15em] uppercase mb-2" style={{ color: "var(--text-tertiary)" }}>
+        服务状态
+      </p>
+      {!backend ? (
+        <div className="text-xs space-y-1" style={{ color: "var(--text-tertiary)" }}>
+          <p>无法获取服务状态</p>
+          <p className="opacity-60">同步模式下只需后端+前端，无需其他服务</p>
+        </div>
+      ) : (
+        <div className="card-outer" style={{ borderRadius: "var(--radius-outer)" }}>
+          <div className="card-inner space-y-0" style={{ padding: "8px 14px" }}>
+            <div className="flex items-center justify-between py-2">
+              <div className="flex items-center gap-2">
+                <span
+                  className="w-1.5 h-1.5 rounded-full"
+                  style={{
+                    background: running ? "#22c55e" : "#666",
+                    boxShadow: running ? "0 0 6px rgba(34,197,94,0.5)" : "none",
+                  }}
+                />
+                <div>
+                  <span className="text-xs" style={{ color: running ? "var(--text-primary)" : "var(--text-tertiary)" }}>
+                    Backend API
+                  </span>
+                  <span className="text-[9px] font-mono ml-2" style={{ color: "var(--text-tertiary)" }}>
+                    Port {backend.port}
+                  </span>
+                </div>
+              </div>
+              <button
+                className="text-[9px] font-mono px-3 py-1 rounded-full"
+                style={{
+                  background: running ? "var(--bg-tertiary)" : "var(--accent)",
+                  color: running ? "var(--text-secondary)" : "#0d0d0d",
+                  opacity: busy ? 0.5 : 1,
+                  cursor: busy ? "not-allowed" : "pointer",
+                  border: "none",
+                }}
+                disabled={busy}
+                onClick={() => call(running ? "stop" : "start")}
+              >
+                {busy ? "..." : running ? "Stop" : "Start"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {error && (
+        <p className="text-[10px] mt-1.5" style={{ color: "#e8a840" }}>
+          {error}
+        </p>
+      )}
+      <p className="text-[9px] mt-1.5 opacity-50" style={{ color: "var(--text-tertiary)" }}>
+        同步模式：后端 + 前端即可；异步模式另需 Redis + Celery
+      </p>
+    </div>
+  );
+}
 
 interface SettingsPanelProps {
   open: boolean;
@@ -20,6 +135,8 @@ interface SettingsPanelProps {
   onVocalSepModelChange: (key: string) => void;
   onStyleExtractModelChange: (key: string) => void;
   onMusicGenModelChange: (key: string) => void;
+  processingMode: ProcessingMode;
+  onProcessingModeChange: (mode: ProcessingMode) => void;
 }
 
 function getModelVram(models: ModelInfo[], key: string): number {
@@ -57,6 +174,8 @@ export default function SettingsPanel({
   onVocalSepModelChange,
   onStyleExtractModelChange,
   onMusicGenModelChange,
+  processingMode,
+  onProcessingModeChange,
 }: SettingsPanelProps) {
   const config = getTierConfig(tier);
   const maxVram = config.maxVramGB;
@@ -139,6 +258,32 @@ export default function SettingsPanel({
                 质量优先
               </button>
             </div>
+          </div>
+
+          {/* Processing Mode */}
+          <div>
+            <p className="text-[10px] font-mono tracking-[0.15em] uppercase mb-2" style={{ color: "var(--text-tertiary)" }}>
+              处理模式
+            </p>
+            <div className="pref-toggle">
+              {(Object.entries(PROCESSING_MODE_LABELS) as [ProcessingMode, { label: string; sub: string }][]).map(([key, { label, sub }]) => (
+                <button
+                  key={key}
+                  className={processingMode === key ? "active" : ""}
+                  onClick={() => onProcessingModeChange(key)}
+                >
+                  {label}
+                  <span className="block text-[9px] opacity-60 mt-0.5">{sub}</span>
+                </button>
+              ))}
+            </div>
+            <p className="text-xs mt-1.5" style={{ color: "var(--text-tertiary)" }}>
+              {processingMode === "sync"
+                ? "只需要后端+前端两个服务，运行 python start_all.py 即可"
+                : processingMode === "async"
+                ? "需要 Redis + Celery Worker，运行 python start_all.py --async"
+                : "自动选择：运行 python start_all.py --async 体验完整功能"}
+            </p>
           </div>
 
           {/* Model Selection */}
@@ -240,29 +385,8 @@ export default function SettingsPanel({
             )}
           </div>
 
-          {/* Remote Server (Beta) */}
-          <div>
-            <p className="text-[10px] font-mono tracking-[0.15em] uppercase mb-2" style={{ color: "var(--text-tertiary)" }}>
-              远端服务器 (Beta)
-            </p>
-            <div className="flex gap-2">
-              <input
-                type="url"
-                placeholder="留空则仅使用本地推理"
-                className="flex-1 px-4 py-2.5 rounded-xl text-sm"
-                style={{
-                  background: "var(--bg-primary)",
-                  border: "1px solid var(--border-color)",
-                  color: "var(--text-secondary)",
-                  fontFamily: "'Plus Jakarta Sans', 'DM Sans', sans-serif",
-                  outline: "none",
-                }}
-              />
-              <button className="btn-ghost text-xs" style={{ whiteSpace: "nowrap" }}>
-                连接测试
-              </button>
-            </div>
-          </div>
+          {/* Service Status */}
+          <ServiceStatus />
         </div>
 
         {/* Save Button */}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import { House, MusicNotes, WaveSine, Books, Playlist, Disc, Microphone, Intersect, GridFour, Gear } from "@phosphor-icons/react";
@@ -19,12 +19,52 @@ const navItems = [
   { id: "blend", label: "BLEND", sub: "混合创作", icon: Intersect },
   { id: "batch", label: "BATCH", sub: "批量创作", icon: GridFour },
   { id: "voice", label: "VOICE", sub: "声音模型库", icon: Microphone },
+  { id: "song", label: "SONG", sub: "歌曲创作", icon: MusicNotes },
   { id: "history", label: "ARCHIVE", sub: "生成记录", icon: Playlist },
 ];
 
 export default function Sidebar({ activeTab, onTabChange, onSettingsClick }: SidebarProps) {
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  const [backendRunning, setBackendRunning] = useState(false);
+  const [toggling, setToggling] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const res = await fetch("/api/services");
+        const data = await res.json();
+        if (!cancelled) setBackendRunning(data.backend?.running ?? false);
+      } catch {}
+    };
+    poll();
+    const id = setInterval(poll, 5000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
+
+  const handleToggleBackend = useCallback(async () => {
+    setToggling(true);
+    setError(null);
+    try {
+      const action = backendRunning ? "stop" : "start";
+      const res = await fetch("/api/services", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      const result = await res.json();
+      if (!result.ok) {
+        setError(result.message || `${action} 失败`);
+        return;
+      }
+      await new Promise((r) => setTimeout(r, 1500));
+      const pollRes = await fetch("/api/services");
+      const pollData = await pollRes.json();
+      setBackendRunning(pollData.backend?.running ?? false);
+    } catch {
+      setError("操作失败，请重试");
+    } finally { setToggling(false); }
+  }, [backendRunning]);
 
   return (
     <aside
@@ -130,6 +170,48 @@ export default function Sidebar({ activeTab, onTabChange, onSettingsClick }: Sid
             <p className="text-xs mt-0.5" style={{ color: "var(--text-secondary)" }}>硬件设置</p>
           </div>
         </button>
+      </div>
+
+      {/* Backend Service Status */}
+      <div className="px-4 py-2" style={{ borderTop: "1px solid var(--border-color)" }}>
+        <div className="flex items-center justify-between px-3 py-2">
+          <div className="flex items-center gap-2">
+            <span
+              className="w-2 h-2 rounded-full inline-block transition-colors duration-500"
+              style={{
+                background: backendRunning ? "#22c55e" : "#666",
+                boxShadow: backendRunning ? "0 0 6px rgba(34,197,94,0.5)" : "none",
+              }}
+            />
+            <div>
+              <p className="text-[9px] font-mono tracking-[0.1em]" style={{ color: "var(--text-tertiary)" }}>
+                BACKEND
+              </p>
+              <p className="text-xs mt-0.5" style={{ color: backendRunning ? "var(--text-primary)" : "var(--text-tertiary)" }}>
+                {backendRunning ? "运行中" : "已停止"}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={handleToggleBackend}
+            disabled={toggling}
+            className="text-[9px] font-mono px-3 py-1 rounded-full transition-all duration-200"
+            style={{
+              background: backendRunning ? "var(--bg-tertiary)" : "var(--accent)",
+              color: backendRunning ? "var(--text-secondary)" : "#0d0d0d",
+              opacity: toggling ? 0.5 : 1,
+              cursor: toggling ? "not-allowed" : "pointer",
+              border: "none",
+            }}
+          >
+            {toggling ? "..." : backendRunning ? "Stop" : "Start"}
+          </button>
+        </div>
+        {error && (
+          <p className="text-[9px] px-3 pb-1" style={{ color: "#e8a840" }}>
+            {error}
+          </p>
+        )}
       </div>
 
       {/* Bottom */}
