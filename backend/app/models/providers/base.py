@@ -22,6 +22,14 @@ class ModelProvider(ABC):
     def is_loaded(self) -> bool:
         """Check if model is currently loaded."""
 
+    @abstractmethod
+    def time_estimate(self, duration_seconds: int = 30) -> float:
+        """Estimated inference time in seconds for the given output duration."""
+
+    @abstractmethod
+    def supports_gpu(self) -> bool:
+        """Return True if this provider has a GPU implementation."""
+
     @property
     @abstractmethod
     def model_key(self) -> str:
