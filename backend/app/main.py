@@ -7,6 +7,7 @@ from app.core.config import get_settings
 from app.core.database import engine, Base, SessionLocal
 from app.models import User, AudioAsset, StyleVector, GeneratedMusic  # noqa: F401 — register models
 from app.api.v1 import auth, audio, music, models as models_api, voice
+from app.api.v1.config import router as config_router
 from app.services.auth_service import create_default_user
 
 settings = get_settings()
@@ -37,6 +38,7 @@ app.include_router(audio.router, prefix="/api/v1")
 app.include_router(music.router, prefix="/api/v1")
 app.include_router(models_api.router, prefix="/api/v1")
 app.include_router(voice.router, prefix="/api/v1")
+app.include_router(config_router, prefix="/api/v1")
 
 
 @app.on_event("startup")

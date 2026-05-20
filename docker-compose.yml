@@ -10,5 +10,47 @@ services:
     volumes:
       - redis_data:/data
 
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: aimusic-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - SONICAI_HARDWARE_TIER=${SONICAI_HARDWARE_TIER:-mid}
+      - SONICAI_PREFERENCE=${SONICAI_PREFERENCE:-speed}
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=sqlite:///./aimusic.db
+      - SECRET_KEY=${SECRET_KEY:-dev-secret-key}
+    volumes:
+      - ./backend/uploads:/app/uploads
+      - ./backend/generated:/app/generated
+      - sonicai_models:/root/.sonicai/models
+    depends_on:
+      - redis
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: aimusic-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://backend:8000/api/v1
+    depends_on:
+      - backend
+    restart: unless-stopped
+
 volumes:
   redis_data:
+  sonicai_models:
