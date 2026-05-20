@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     # CORS
     CORS_ORIGINS: list[str] = ["http://localhost:3000"]
 
+    # Hardware tier
+    SONICAI_HARDWARE_TIER: str = "ultra"
+    SONICAI_PREFERENCE: str = "speed"
+
     class Config:
         env_file = ".env"
 

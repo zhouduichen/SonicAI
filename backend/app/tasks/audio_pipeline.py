@@ -6,7 +6,7 @@ import logging
 from app.tasks.celery_app import celery_app
 from app.core.config import get_settings
 from app.models.providers.registry import get_provider
-from app.models.providers.gpu_manager import gpu_manager
+from app.models.providers.resource_manager import resource_manager
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -29,7 +29,7 @@ def _separate_vocals(audio_path: str, task_id: str = "", model: str = "demucs_ht
     _report_progress(task_id, "separating", 10, f"正在加载 {model} 模型...")
 
     provider = get_provider(model)
-    gpu_manager.acquire(provider)
+    resource_manager.acquire(provider)
 
     _report_progress(task_id, "separating", 40, "正在分离人声与伴奏...")
     result = provider.separate(audio_path)
@@ -44,7 +44,7 @@ def _extract_style_embedding(instrumental_path: str, task_id: str = "", model: s
     _report_progress(task_id, "extracting", 10, f"正在加载 {model} 模型...")
 
     provider = get_provider(model)
-    gpu_manager.acquire(provider)
+    resource_manager.acquire(provider)
 
     _report_progress(task_id, "extracting", 50, "正在提取风格向量...")
     embedding = provider.extract(instrumental_path)
@@ -59,7 +59,7 @@ def _generate_music(style_embedding: list[float], text_prompt: str, task_id: str
     _report_progress(task_id, "generating", 10, f"正在加载 {model} 模型...")
 
     provider = get_provider(model)
-    gpu_manager.acquire(provider)
+    resource_manager.acquire(provider)
 
     _report_progress(task_id, "generating", 40, "正在生成音乐...")
     result = provider.generate(style_embedding, text_prompt)
@@ -125,7 +125,7 @@ def process_audio_upload(
         self.update_state(state="FAILURE", meta={"stage": "failed", "message": str(e)})
         raise
     finally:
-        gpu_manager.release_all()
+        resource_manager.release_all()
 
 
 # === Celery Task: Full Music Generation ===
@@ -178,7 +178,7 @@ def process_music_generation(
         self.update_state(state="FAILURE", meta={"stage": "failed", "message": str(e)})
         raise
     finally:
-        gpu_manager.release_all()
+        resource_manager.release_all()
 
 
 # === Celery Task: Style Blending Generation ===
@@ -259,7 +259,7 @@ def process_blend_generation(
         self.update_state(state="FAILURE", meta={"stage": "failed", "message": str(e)})
         raise
     finally:
-        gpu_manager.release_all()
+        resource_manager.release_all()
 
 
 # === Celery Task: Batch Generation (single cell) ===
@@ -314,4 +314,4 @@ def process_batch_generation(
         })
         raise
     finally:
-        gpu_manager.release_all()
+        resource_manager.release_all()
