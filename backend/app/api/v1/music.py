@@ -1,6 +1,9 @@
 import os
+import json
+import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from typing import Literal
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from slowapi import Limiter
@@ -10,7 +13,7 @@ from app.models.user import User
 from app.models.style_vector import StyleVector
 from app.models.generated_music import GeneratedMusic
 from app.models.model_registry import validate_model_key
-from app.schemas.music import GenerateRequest, GenerateResponse, MusicResponse, MusicListResponse
+from app.schemas.music import GenerateRequest, GenerateResponse, MusicResponse, MusicListResponse, SuggestionsRequest, SuggestionsResponse
 from app.schemas.blend import BlendGenerateRequest, BlendGenerateResponse, BLEND_PRESETS, BlendPreset
 from app.schemas.batch import BatchGenerateRequest, BatchGenerateResponse, BatchStatusResponse, BatchTaskInfo, BatchCellInfo
 from app.schemas.audio import StatusResponse
@@ -20,8 +23,54 @@ from app.tasks.celery_app import celery_app
 
 import uuid
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/music", tags=["music"])
 limiter = Limiter(key_func=get_remote_address)
+
+
+def _sync_generate_music(
+    embedding_json: str,
+    text_prompt: str,
+    vector_id: int,
+    user_id: int,
+    music_gen_model: str,
+) -> dict:
+    """Run music generation synchronously (no Celery needed)."""
+    from app.core.database import SessionLocal
+    from app.models.generated_music import GeneratedMusic
+    from app.tasks.audio_pipeline import _generate_music
+    from app.models.providers.resource_manager import resource_manager
+    import json as _json
+
+    try:
+        embedding = _json.loads(embedding_json)
+        result = _generate_music(embedding, text_prompt, task_id="", model=music_gen_model)
+
+        db = SessionLocal()
+        try:
+            music = GeneratedMusic(
+                user_id=user_id, vector_id=vector_id,
+                prompt=text_prompt, title=text_prompt[:30],
+                file_path=result["file_path"],
+                duration_seconds=result["duration_seconds"],
+                music_gen_model=music_gen_model,
+            )
+            db.add(music)
+            db.commit()
+            db.refresh(music)
+
+            return {
+                "stage": "completed",
+                "music_id": music.id,
+                "file_path": music.file_path,
+                "title": music.title,
+                "duration_seconds": music.duration_seconds,
+                "music_gen_model": music_gen_model,
+            }
+        finally:
+            db.close()
+    finally:
+        resource_manager.release_all()
 
 
 @router.post("/generate", response_model=GenerateResponse)
@@ -29,11 +78,14 @@ limiter = Limiter(key_func=get_remote_address)
 def generate(
     request: Request,
     body: GenerateRequest,
+    processing_mode: Literal["sync", "async", "auto"] = Query("sync"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Generate music using a cached style vector and text prompt."""
-    # Verify the style vector belongs to this user
+    """Generate music using a cached style vector and text prompt.
+
+    processing_mode: "auto" / "sync" / "async"
+    """
     vector = (
         db.query(StyleVector)
         .filter(StyleVector.id == body.style_vector_id, StyleVector.user_id == user.id)
@@ -45,15 +97,41 @@ def generate(
     if not validate_model_key("music_gen", body.music_gen_model):
         raise HTTPException(status_code=400, detail=f"Unknown music generation model: {body.music_gen_model}")
 
-    task = process_music_generation.delay(
-        embedding_json=vector.embedding,
-        text_prompt=body.text_prompt,
-        vector_id=vector.id,
-        user_id=user.id,
-        music_gen_model=body.music_gen_model,
-    )
+    from app.api.v1.audio import _store_sync_result
 
-    return GenerateResponse(task_id=task.id, music_gen_model=body.music_gen_model)
+    if processing_mode == "sync":
+        result = _sync_generate_music(
+            vector.embedding, body.text_prompt, vector.id, user.id, body.music_gen_model,
+        )
+        task_id = f"sync-{result.get('music_id', 'unknown')}"
+        _store_sync_result(task_id, result)
+    elif processing_mode == "async":
+        try:
+            task = process_music_generation.delay(
+                embedding_json=vector.embedding, text_prompt=body.text_prompt,
+                vector_id=vector.id, user_id=user.id, music_gen_model=body.music_gen_model,
+            )
+            task_id = task.id
+        except Exception as e:
+            raise HTTPException(status_code=503, detail=f"后台队列不可用 (Redis/Celery 未启动): {e}")
+    else:
+        # Auto
+        task_id = None
+        try:
+            task = process_music_generation.delay(
+                embedding_json=vector.embedding, text_prompt=body.text_prompt,
+                vector_id=vector.id, user_id=user.id, music_gen_model=body.music_gen_model,
+            )
+            task_id = task.id
+        except Exception as e:
+            logger.warning(f"Celery unavailable ({e}), generating music synchronously")
+            result = _sync_generate_music(
+                vector.embedding, body.text_prompt, vector.id, user.id, body.music_gen_model,
+            )
+            task_id = f"sync-{result.get('music_id', 'unknown')}"
+            _store_sync_result(task_id, result)
+
+    return GenerateResponse(task_id=task_id, music_gen_model=body.music_gen_model)
 
 
 @router.get("/list", response_model=MusicListResponse)
@@ -78,17 +156,20 @@ def list_music(
 def blend_generate(
     request: Request,
     body: BlendGenerateRequest,
+    processing_mode: Literal["sync", "async", "auto"] = Query("sync"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Generate music from a weighted blend of multiple style vectors."""
+    """Generate music from a weighted blend of multiple style vectors.
+
+    processing_mode: "auto" / "sync" / "async"
+    """
     if len(body.blends) < 2 or len(body.blends) > 3:
         raise HTTPException(status_code=400, detail="需要 2-3 个风格向量进行混合")
 
     if not validate_model_key("music_gen", body.music_gen_model):
         raise HTTPException(status_code=400, detail=f"Unknown music generation model: {body.music_gen_model}")
 
-    # Verify all vectors belong to user and collect embeddings
     embeddings = []
     for b in body.blends:
         vector = db.query(StyleVector).filter(
@@ -98,15 +179,39 @@ def blend_generate(
             raise HTTPException(status_code=404, detail=f"风格向量 {b.style_vector_id} 不存在")
         embeddings.append((vector.embedding, b.weight))
 
-    task = process_blend_generation.delay(
-        embeddings=embeddings,
-        text_prompt=body.text_prompt,
-        user_id=user.id,
-        music_gen_model=body.music_gen_model,
-    )
+    from app.api.v1.audio import _store_sync_result
+    from app.tasks.audio_pipeline import _blend_embeddings
+
+    if processing_mode == "sync":
+        blended = _blend_embeddings(embeddings)
+        result = _sync_generate_music(json.dumps(blended), body.text_prompt, 0, user.id, body.music_gen_model)
+        task_id = f"sync-{result.get('music_id', 'blend')}"
+        _store_sync_result(task_id, result)
+    elif processing_mode == "async":
+        try:
+            task = process_blend_generation.delay(
+                embeddings=embeddings, text_prompt=body.text_prompt,
+                user_id=user.id, music_gen_model=body.music_gen_model,
+            )
+            task_id = task.id
+        except Exception as e:
+            raise HTTPException(status_code=503, detail=f"后台队列不可用 (Redis/Celery 未启动): {e}")
+    else:
+        try:
+            task = process_blend_generation.delay(
+                embeddings=embeddings, text_prompt=body.text_prompt,
+                user_id=user.id, music_gen_model=body.music_gen_model,
+            )
+            task_id = task.id
+        except Exception as e:
+            logger.warning(f"Celery unavailable ({e}), blending synchronously")
+            blended = _blend_embeddings(embeddings)
+            result = _sync_generate_music(json.dumps(blended), body.text_prompt, 0, user.id, body.music_gen_model)
+            task_id = f"sync-{result.get('music_id', 'blend')}"
+            _store_sync_result(task_id, result)
 
     return BlendGenerateResponse(
-        task_id=task.id, music_gen_model=body.music_gen_model,
+        task_id=task_id, music_gen_model=body.music_gen_model,
         num_blends=len(body.blends),
     )
 
@@ -122,10 +227,14 @@ def list_blend_presets():
 def generate_batch(
     request: Request,
     body: BatchGenerateRequest,
+    processing_mode: Literal["sync", "async", "auto"] = Query("sync"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Generate music in a prompt × model matrix grid."""
+    """Generate music in a prompt × model matrix grid.
+
+    processing_mode: "auto" / "sync" / "async"
+    """
     vector = db.query(StyleVector).filter(
         StyleVector.id == body.style_vector_id, StyleVector.user_id == user.id
     ).first()
@@ -138,25 +247,51 @@ def generate_batch(
 
     batch_id = uuid.uuid4().hex[:12]
     tasks: list[BatchTaskInfo] = []
+    from app.api.v1.audio import _store_sync_result
 
-    # Register batch in Redis SET for efficient polling
-    from app.tasks.celery_app import celery_app
-    batch_key = f"batch:{batch_id}"
-
-    for prompt in body.prompts:
-        for model in body.music_gen_models:
-            task = process_batch_generation.delay(
-                embedding_json=vector.embedding,
-                text_prompt=prompt,
-                user_id=user.id,
-                music_gen_model=model,
-                batch_id=batch_id,
-            )
-            celery_app.backend.client.sadd(batch_key, task.id)
-            tasks.append(BatchTaskInfo(task_id=task.id, prompt=prompt, model=model))
-
-    # Set TTL on batch index (1 hour)
-    celery_app.backend.client.expire(batch_key, 3600)
+    if processing_mode == "sync":
+        for prompt in body.prompts:
+            for model in body.music_gen_models:
+                result = _sync_generate_music(vector.embedding, prompt, vector.id, user.id, model)
+                sid = f"sync-{result.get('music_id', 'unknown')}-{batch_id}"
+                _store_sync_result(sid, result)
+                tasks.append(BatchTaskInfo(task_id=sid, prompt=prompt, model=model))
+    elif processing_mode == "async":
+        try:
+            from app.tasks.celery_app import celery_app
+            batch_key = f"batch:{batch_id}"
+            for prompt in body.prompts:
+                for model in body.music_gen_models:
+                    task = process_batch_generation.delay(
+                        embedding_json=vector.embedding, text_prompt=prompt,
+                        user_id=user.id, music_gen_model=model, batch_id=batch_id,
+                    )
+                    celery_app.backend.client.sadd(batch_key, task.id)
+                    tasks.append(BatchTaskInfo(task_id=task.id, prompt=prompt, model=model))
+            celery_app.backend.client.expire(batch_key, 3600)
+        except Exception as e:
+            raise HTTPException(status_code=503, detail=f"后台队列不可用 (Redis/Celery 未启动): {e}")
+    else:
+        try:
+            from app.tasks.celery_app import celery_app
+            batch_key = f"batch:{batch_id}"
+            for prompt in body.prompts:
+                for model in body.music_gen_models:
+                    task = process_batch_generation.delay(
+                        embedding_json=vector.embedding, text_prompt=prompt,
+                        user_id=user.id, music_gen_model=model, batch_id=batch_id,
+                    )
+                    celery_app.backend.client.sadd(batch_key, task.id)
+                    tasks.append(BatchTaskInfo(task_id=task.id, prompt=prompt, model=model))
+            celery_app.backend.client.expire(batch_key, 3600)
+        except Exception as e:
+            logger.warning(f"Celery unavailable ({e}), running batch synchronously")
+            for prompt in body.prompts:
+                for model in body.music_gen_models:
+                    result = _sync_generate_music(vector.embedding, prompt, vector.id, user.id, model)
+                    sid = f"sync-{result.get('music_id', 'unknown')}-{batch_id}"
+                    _store_sync_result(sid, result)
+                    tasks.append(BatchTaskInfo(task_id=sid, prompt=prompt, model=model))
 
     return BatchGenerateResponse(batch_id=batch_id, tasks=tasks)
 
@@ -205,7 +340,23 @@ def get_batch_status(
                 file_path=result.get("file_path"),
             ))
     except Exception:
-        pass
+        pass  # Redis unavailable — fall through to sync check below
+
+    # Fallback: check in-memory sync results when Redis had no data
+    if not cells:
+        from app.api.v1.audio import _sync_results
+        for key, entry in _sync_results.items():
+            if batch_id in key:
+                meta = entry["data"] if isinstance(entry, dict) and "data" in entry else entry
+                cells.append(BatchCellInfo(
+                    task_id=key,
+                    prompt=meta.get("prompt", ""),
+                    model=meta.get("music_gen_model", ""),
+                    status="completed",
+                    music_id=meta.get("music_id"),
+                    file_path=meta.get("file_path"),
+                ))
+                completed += 1
 
     return BatchStatusResponse(batch_id=batch_id, cells=cells, total=len(cells), completed=completed)
 
@@ -213,6 +364,24 @@ def get_batch_status(
 @router.get("/status/{task_id}", response_model=StatusResponse)
 def get_music_task_status(task_id: str):
     """Poll the status of a music generation / blend / batch task."""
+    # Check in-memory sync results first (same pattern as audio.py's _sync_results)
+    from app.api.v1.audio import _sync_results
+    if task_id in _sync_results:
+        entry = _sync_results[task_id]
+        meta = entry["data"] if isinstance(entry, dict) and "data" in entry else entry
+        return StatusResponse(
+            task_id=task_id,
+            stage=meta.get("stage", "completed"),
+            progress=100,
+            message=meta.get("message", "完成"),
+            music_id=meta.get("music_id"),
+            file_path=meta.get("file_path"),
+            title=meta.get("title"),
+            duration_seconds=meta.get("duration_seconds"),
+            music_gen_model=meta.get("music_gen_model"),
+            style_vector=meta.get("style_vector"),
+        )
+
     try:
         result = celery_app.AsyncResult(task_id)
     except Exception as e:
@@ -301,3 +470,24 @@ def list_featured_music(
         )
         for m in items
     ]
+
+
+@router.post("/suggestions", response_model=SuggestionsResponse)
+def get_suggestions(
+    body: SuggestionsRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Generate music description suggestions for a style vector."""
+    vector = (
+        db.query(StyleVector)
+        .filter(StyleVector.id == body.style_vector_id, StyleVector.user_id == user.id)
+        .first()
+    )
+    if not vector:
+        raise HTTPException(status_code=404, detail="风格向量不存在")
+
+    from app.models.providers.prompt_registry import generate_suggestions
+
+    suggestions, provider = generate_suggestions(vector.style_name)
+    return SuggestionsResponse(suggestions=suggestions, provider=provider)

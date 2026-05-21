@@ -48,8 +48,9 @@ export interface ModelInfo {
   quality: string;
   speed: string;
   embedding_dim?: number;
-  pros: string[];
-  cons: string[];
+  installed?: boolean;
+  pros?: string[];
+  cons?: string[];
 }
 
 export interface ModelCatalog {
@@ -67,6 +68,8 @@ export interface ModelSelection {
 export type HardwareTier = "ultra" | "high" | "mid" | "low" | "cpu";
 
 export type PreferenceMode = "speed" | "quality";
+
+export type ProcessingMode = "auto" | "sync" | "async";
 
 // File System Access API
 declare global {
@@ -91,7 +94,7 @@ export interface HardwareTierConfig {
 export interface VoiceModel {
   id: string;
   name: string;
-  sourceAudioId: string;
+  sourceAudioIds: number[];
   status: "pending" | "preprocessing" | "training" | "ready" | "failed";
   epoch: number;
   qualityTier: "preview" | "standard" | "premium";
@@ -105,5 +108,16 @@ export interface VocalGeneration {
   outputPath: string;
   status: "pending" | "processing" | "completed" | "failed";
   durationSeconds: number;
+  createdAt: string;
+}
+
+export interface Song {
+  id: string;
+  theme: string;
+  status: "writing" | "arranging" | "singing" | "mixing" | "completed" | "failed";
+  lyrics: string;
+  instrumentalPath: string;
+  vocalPath: string;
+  mixedPath: string;
   createdAt: string;
 }

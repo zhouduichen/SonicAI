@@ -8,6 +8,25 @@ import WaveformViewer from "./WaveformViewer";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
+// Shared auth token cache (same pattern as page.tsx)
+let cachedToken: string | null = null;
+let tokenExpiry: number = 0;
+
+async function getAuthToken(): Promise<string> {
+  if (cachedToken && Date.now() < tokenExpiry) return cachedToken;
+  const res = await fetch(`${API_BASE}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username: "admin", password: "admin123" }),
+  });
+  if (!res.ok) throw new Error("Auth failed");
+  const data = await res.json();
+  cachedToken = data.access_token || null;
+  tokenExpiry = Date.now() + 23 * 60 * 60 * 1000;
+  if (!cachedToken) throw new Error("No token in auth response");
+  return cachedToken;
+}
+
 interface MusicPlayerProps {
   music: GeneratedMusic | null;
   hasPrev?: boolean;
@@ -37,65 +56,87 @@ export default function MusicPlayer({ music, hasPrev, hasNext, onPrev, onNext }:
   const [duration, setDuration] = useState(0);
   const [vizMode, setVizMode] = useState<"waveform" | "spectrogram">("waveform");
   const [analyserNode, setAnalyserNode] = useState<AnalyserNode | null>(null);
+  const [audioUrl, setAudioUrl] = useState("");
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
-  const sourceRef = useRef<MediaElementAudioSourceNode | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
   const dirHandleRef = useRef<FileSystemDirectoryHandle | null>(null);
 
+  // Fetch audio with auth token and create blob URL
   useEffect(() => {
-    if (music) {
-      setIsPlaying(false);
-      setCurrentTime(0);
-      setDuration(0);
-    }
-  }, [music]);
+    if (!music) return;
+    let cancelled = false;
 
-  const setupAnalyser = useCallback(() => {
-    if (analyserRef.current) return;
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    try {
-      if (!audioCtxRef.current) {
-        audioCtxRef.current = new AudioContext();
+    (async () => {
+      try {
+        const token = await getAuthToken();
+        const res = await fetch(resolveAudioUrl(music), {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error("Failed to fetch audio");
+        const blob = await res.blob();
+        if (!cancelled) {
+          // Revoke old blob URL if any
+          if (audioUrl) URL.revokeObjectURL(audioUrl);
+          setAudioUrl(URL.createObjectURL(blob));
+        }
+      } catch {
+        if (!cancelled) setAudioUrl(resolveAudioUrl(music));
       }
-      const ctx = audioCtxRef.current;
-      if (ctx.state === "suspended") {
-        ctx.resume();
-      }
+    })();
 
-      const analyser = ctx.createAnalyser();
-      analyser.fftSize = 2048;
-      analyser.smoothingTimeConstant = 0.8;
+    return () => { cancelled = true; };
+  }, [music?.id]);
 
-      const source = ctx.createMediaElementSource(audio);
-      source.connect(analyser);
-
-      analyserRef.current = analyser;
-      sourceRef.current = source;
-      setAnalyserNode(analyser);
-    } catch {
-      // createMediaElementSource already called, or cross-origin blocked
+  // Cleanup on music change
+  useEffect(() => {
+    if (!music) return;
+    setIsPlaying(false);
+    setCurrentTime(0);
+    setDuration(0);
+    setAnalyserNode(null);
+    if (audioCtxRef.current?.state !== "closed") {
+      audioCtxRef.current?.close().catch(() => {});
+      audioCtxRef.current = null;
     }
-  }, []);
+  }, [music?.id]);
 
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (audioCtxRef.current && audioCtxRef.current.state !== "closed") {
+      if (audioUrl) URL.revokeObjectURL(audioUrl);
+      if (audioCtxRef.current?.state !== "closed") {
         audioCtxRef.current.close().catch(() => {});
       }
     };
   }, []);
 
   const togglePlay = () => {
-    if (!audioRef.current) return;
-    setupAnalyser();
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    if (!audioCtxRef.current) {
+      try {
+        const ctx = new AudioContext();
+        audioCtxRef.current = ctx;
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 2048;
+        analyser.smoothingTimeConstant = 0.8;
+        const source = ctx.createMediaElementSource(audio);
+        source.connect(analyser);
+        analyser.connect(ctx.destination);
+        setAnalyserNode(analyser);
+      } catch {
+        // Plain HTML5 audio fallback
+      }
+    } else if (audioCtxRef.current.state === "suspended") {
+      audioCtxRef.current.resume();
+    }
+
     if (isPlaying) {
-      audioRef.current.pause();
+      audio.pause();
     } else {
-      audioRef.current.play();
+      audio.play().catch(() => {});
     }
     setIsPlaying(!isPlaying);
   };
@@ -151,10 +192,13 @@ export default function MusicPlayer({ music, hasPrev, hasNext, onPrev, onNext }:
         <div className="card-inner p-6 space-y-5 relative overflow-hidden">
           <audio
             ref={audioRef}
-            src={resolveAudioUrl(music)}
+            src={audioUrl || resolveAudioUrl(music)}
+            preload="auto"
             onTimeUpdate={handleTimeUpdate}
             onLoadedMetadata={handleLoadedMetadata}
             onEnded={() => setIsPlaying(false)}
+            onPlay={() => setIsPlaying(true)}
+            onPause={() => setIsPlaying(false)}
           />
 
           {/* Top ornaments */}

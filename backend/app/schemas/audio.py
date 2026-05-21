@@ -21,6 +21,24 @@ class StyleVectorResponse(BaseModel):
         from_attributes = True
 
 
+class AudioAssetResponse(BaseModel):
+    id: int
+    file_name: str
+    file_path: str
+    status: str
+    vocal_sep_model: str | None = None
+    style_vector: StyleVectorResponse | None = None
+    created_at: datetime | None = None
+
+    class Config:
+        from_attributes = True
+
+
+class AudioAssetListResponse(BaseModel):
+    items: list[AudioAssetResponse]
+    total: int
+
+
 class StatusResponse(BaseModel):
     task_id: str
     stage: str  # separating, extracting, generating, completed, failed

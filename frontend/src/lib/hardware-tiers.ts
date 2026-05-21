@@ -1,4 +1,4 @@
-import type { HardwareTier, HardwareTierConfig, PreferenceMode } from "@/types";
+import type { HardwareTier, HardwareTierConfig, PreferenceMode, ProcessingMode } from "@/types";
 
 const PRESET_TIME: Record<HardwareTier, Record<PreferenceMode, number>> = {
   ultra: { speed: 60, quality: 120 },
@@ -63,3 +63,9 @@ export function getTierConfig(tier: HardwareTier): HardwareTierConfig {
 export function getEstimatedTime(tier: HardwareTier, mode: PreferenceMode): number {
   return PRESET_TIME[tier][mode];
 }
+
+export const PROCESSING_MODE_LABELS: Record<ProcessingMode, { label: string; sub: string }> = {
+  auto: { label: "自动", sub: "系统选择" },
+  sync: { label: "即时", sub: "直接处理" },
+  async: { label: "后台", sub: "需要 Redis" },
+};

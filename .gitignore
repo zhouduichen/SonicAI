@@ -12,6 +12,8 @@ backend/uploads/
 backend/generated/
 backend/celery.log
 backend/.env
+*.tmp
+backend/demucs_out*/
 
 # Node
 node_modules/
@@ -30,3 +32,4 @@ Thumbs.db
 
 # Docker
 redis_data/
+_*.wav

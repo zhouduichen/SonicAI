@@ -3,15 +3,18 @@ from sqlalchemy import desc
 from app.models.voice_model import VoiceModel
 from app.models.vocal_generation import VocalGeneration
 
+EPOCH_TARGETS = {"preview": 20, "standard": 100, "premium": 200}
+TIER_MILESTONES = [("preview", 20), ("standard", 100), ("premium", 200)]
 
-def create_voice_model(db: Session, user_id: int, name: str, source_audio_id: int, quality_target: str = "premium") -> VoiceModel:
+
+def create_voice_model(db: Session, user_id: int, name: str, source_audio_ids: list[int], quality_target: str = "premium") -> VoiceModel:
     model = VoiceModel(
         user_id=user_id,
         name=name,
-        source_audio_id=source_audio_id,
         status="pending",
         quality_tier=quality_target,
     )
+    model.source_ids = source_audio_ids
     db.add(model)
     db.commit()
     db.refresh(model)

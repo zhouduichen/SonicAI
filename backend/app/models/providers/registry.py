@@ -38,6 +38,36 @@ def _create_provider(key: str):
     return None
 
 
+_PACKAGE_AVAILABILITY: dict[str, bool] = {}
+
+def _check_package_installed(import_name: str) -> bool:
+    """Check if a Python package is actually importable (cached)."""
+    if import_name not in _PACKAGE_AVAILABILITY:
+        try:
+            __import__(import_name)
+            _PACKAGE_AVAILABILITY[import_name] = True
+        except ImportError:
+            _PACKAGE_AVAILABILITY[import_name] = False
+    return _PACKAGE_AVAILABILITY[import_name]
+
+
+def _is_model_installed(model_key: str) -> bool:
+    """Check if the required packages for a model key are available."""
+    if validate_model_key("vocal_sep", model_key):
+        if model_key.startswith("demucs"):
+            return _check_package_installed("demucs")
+        return _check_package_installed("spleeter")
+    if validate_model_key("style_extract", model_key):
+        if model_key.startswith("encodec"):
+            return True  # encodec is bundled or lightweight
+        return _check_package_installed("laion_clap")
+    if validate_model_key("music_gen", model_key):
+        if model_key.startswith("audioldm"):
+            return _check_package_installed("diffusers")
+        return _check_package_installed("audiocraft")
+    return False
+
+
 def get_available_providers(category: CategoryKey) -> list[tuple]:
     """Return list of (ModelInfo, installed) tuples for a category."""
     from app.models.model_registry import ModelInfo
@@ -49,12 +79,7 @@ def get_available_providers(category: CategoryKey) -> list[tuple]:
     models = models_map.get(category, [])
     result = []
     for m in models:
-        installed = False
-        try:
-            get_provider(m.key)
-            installed = True
-        except Exception:
-            pass
+        installed = _is_model_installed(m.key)
         result.append((m, installed))
     return result
 

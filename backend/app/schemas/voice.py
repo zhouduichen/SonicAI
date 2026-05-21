@@ -5,7 +5,7 @@ from typing import Optional
 
 class TrainVoiceRequest(BaseModel):
     model_config = ConfigDict(protected_namespaces=())
-    audio_asset_id: int
+    audio_asset_ids: list[int]
     name: str
     quality_target: str = "premium"  # preview | standard | premium
 

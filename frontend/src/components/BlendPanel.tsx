@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Intersect, Plus, X, Lightning } from "@phosphor-icons/react";
 import type { StyleTag, ModelInfo } from "@/types";
 import ModelSelector from "./ModelSelector";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
 interface BlendPanelProps {
   styles: StyleTag[];
@@ -22,7 +24,7 @@ interface BlendPreset {
   num_styles: number;
 }
 
-const PRESETS: BlendPreset[] = [
+const FALLBACK_PRESETS: BlendPreset[] = [
   { key: "equal", name: "均衡融合", description: "各风格等权重", weights: [0.5, 0.5], num_styles: 2 },
   { key: "dominant_a", name: "A主导 (70/30)", description: "第一风格为主", weights: [0.7, 0.3], num_styles: 2 },
   { key: "gentle_blend", name: "渐进过渡 (80/20)", description: "主风格保留", weights: [0.8, 0.2], num_styles: 2 },
@@ -35,6 +37,18 @@ export default function BlendPanel({
   const [selectedStyles, setSelectedStyles] = useState<number[]>([]);
   const [weights, setWeights] = useState<number[]>([0.5, 0.5]);
   const [prompt, setPrompt] = useState("");
+  const [presets, setPresets] = useState<BlendPreset[]>(FALLBACK_PRESETS);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/music/blend-presets`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && Array.isArray(data) && data.length > 0) {
+          setPresets(data as BlendPreset[]);
+        }
+      })
+      .catch(() => {}); // keep fallback
+  }, []);
 
   const toggleStyle = (styleId: number) => {
     if (selectedStyles.includes(styleId)) {
@@ -161,7 +175,7 @@ export default function BlendPanel({
 
         {/* Presets */}
         <div className="flex gap-2 flex-wrap">
-          {PRESETS.map((p) => (
+          {presets.map((p) => (
             <button
               key={p.key}
               onClick={() => applyPreset(p)}

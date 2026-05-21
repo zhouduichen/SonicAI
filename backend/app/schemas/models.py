@@ -10,6 +10,8 @@ class ModelInfoResponse(BaseModel):
     speed: str
     embedding_dim: int | None = None
     installed: bool = False
+    pros: list[str] | None = None
+    cons: list[str] | None = None
 
 
 class ModelCatalogResponse(BaseModel):

@@ -179,6 +179,14 @@ async function apiDeleteVoiceModel(modelId: string): Promise<boolean> {
   return res.ok;
 }
 
+async function apiDeleteAudioAsset(assetId: string): Promise<boolean> {
+  const res = await fetch(`${API_BASE}/audio/${assetId}`, {
+    method: "DELETE",
+    headers: await authHeaders(),
+  });
+  return res.ok;
+}
+
 async function apiPollVoiceStatus(modelId: string): Promise<{ status: string; current_epoch: number; available_tiers: string[] }> {
   const res = await fetch(`${API_BASE}/voice/status/${modelId}`, { headers: await authHeaders() });
   if (!res.ok) throw new Error("Status check failed");
@@ -204,6 +212,18 @@ async function apiFetchSuggestions(styleVectorId: number): Promise<string[]> {
   if (!res.ok) return [];
   const data = await res.json();
   return data.suggestions || [];
+}
+
+async function apiGetAudioAssets(): Promise<{ items: { id: number; file_name: string; file_path: string; status: string; vocal_sep_model?: string; style_vector?: { id: number; style_name: string; asset_id: number; style_extract_model: string; created_at: string } | null; created_at?: string }[]; total: number }> {
+  const res = await fetch(`${API_BASE}/audio/list`, { headers: await authHeaders() });
+  if (!res.ok) return { items: [], total: 0 };
+  return res.json();
+}
+
+async function apiGetMusicList(): Promise<{ items: { id: number; title: string; prompt: string; style_name: string; file_path: string; duration_seconds: number; music_gen_model?: string; created_at: string }[]; total: number }> {
+  const res = await fetch(`${API_BASE}/music/list`, { headers: await authHeaders() });
+  if (!res.ok) return { items: [], total: 0 };
+  return res.json();
 }
 
 export default function CreatePage() {
@@ -526,6 +546,61 @@ export default function CreatePage() {
     }
   }, [selectedStyle, processingMode]);
 
+  // Load existing data from backend on mount
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [assetsData, musicData] = await Promise.all([
+          apiGetAudioAssets(),
+          apiGetMusicList(),
+        ]);
+        if (cancelled) return;
+
+        // Load audio assets + style vectors
+        const loadedAssets: AudioAsset[] = assetsData.items.map((a) => ({
+          id: String(a.id),
+          fileName: a.file_name,
+          filePath: a.file_path,
+          status: a.status as "processing" | "completed" | "failed",
+          vocalSepModel: a.vocal_sep_model,
+          uploadedAt: a.created_at || "",
+        }));
+        setUploadingAssets(loadedAssets);
+
+        // Load style vectors
+        const loadedStyles: StyleTag[] = [];
+        for (const a of assetsData.items) {
+          if (a.style_vector) {
+            loadedStyles.push({
+              id: String(a.style_vector.id),
+              name: a.style_vector.style_name,
+              assetId: String(a.style_vector.asset_id),
+              embedding: [],
+              styleExtractModel: a.style_vector.style_extract_model,
+              createdAt: a.style_vector.created_at?.split("T")[0] || "",
+            });
+          }
+        }
+        setStyles(loadedStyles);
+
+        // Load music playlist
+        const loadedPlaylist: GeneratedMusic[] = musicData.items.map((m) => ({
+          id: String(m.id),
+          title: m.title,
+          prompt: m.prompt,
+          styleName: m.style_name,
+          filePath: m.file_path,
+          duration: m.duration_seconds,
+          musicGenModel: m.music_gen_model,
+          createdAt: m.created_at?.split("T")[0] || "",
+        }));
+        setPlaylist(loadedPlaylist);
+      } catch { /* silently ignore on first load */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   // Restore saved preferences from localStorage after hydration
   useEffect(() => {
     const tier = localStorage.getItem("sonicai_tier") as HardwareTier | null;
@@ -694,9 +769,29 @@ export default function CreatePage() {
                         styles={styles}
                         selectedId={selectedStyle?.id}
                         onSelect={setSelectedStyle}
-                        onDelete={(id) => {
-                          setStyles((prev) => prev.filter((s) => s.id !== id));
-                          if (selectedStyle?.id === id) setSelectedStyle(null);
+                        onDelete={async (styleId) => {
+                          const style = styles.find((s) => s.id === styleId);
+                          if (style) await apiDeleteAudioAsset(style.assetId);
+                          // Reload from backend to ensure consistency
+                          const data = await apiGetAudioAssets();
+                          setUploadingAssets(data.items.map((a) => ({
+                            id: String(a.id), fileName: a.file_name, filePath: a.file_path,
+                            status: a.status as "processing" | "completed" | "failed",
+                            vocalSepModel: a.vocal_sep_model, uploadedAt: a.created_at || "",
+                          })));
+                          const freshStyles: StyleTag[] = [];
+                          for (const a of data.items) {
+                            if (a.style_vector) {
+                              freshStyles.push({
+                                id: String(a.style_vector.id), name: a.style_vector.style_name,
+                                assetId: String(a.style_vector.asset_id), embedding: [],
+                                styleExtractModel: a.style_vector.style_extract_model,
+                                createdAt: a.style_vector.created_at?.split("T")[0] || "",
+                              });
+                            }
+                          }
+                          setStyles(freshStyles);
+                          if (selectedStyle?.id === styleId) setSelectedStyle(null);
                         }}
                       />
                     </ErrorBoundary>
@@ -740,9 +835,28 @@ export default function CreatePage() {
                   styles={styles}
                   selectedId={selectedStyle?.id}
                   onSelect={setSelectedStyle}
-                  onDelete={(id) => {
-                    setStyles((prev) => prev.filter((s) => s.id !== id));
-                    if (selectedStyle?.id === id) setSelectedStyle(null);
+                  onDelete={async (styleId) => {
+                    const style = styles.find((s) => s.id === styleId);
+                    if (style) await apiDeleteAudioAsset(style.assetId);
+                    const data = await apiGetAudioAssets();
+                    setUploadingAssets(data.items.map((a) => ({
+                      id: String(a.id), fileName: a.file_name, filePath: a.file_path,
+                      status: a.status as "processing" | "completed" | "failed",
+                      vocalSepModel: a.vocal_sep_model, uploadedAt: a.created_at || "",
+                    })));
+                    const freshStyles: StyleTag[] = [];
+                    for (const a of data.items) {
+                      if (a.style_vector) {
+                        freshStyles.push({
+                          id: String(a.style_vector.id), name: a.style_vector.style_name,
+                          assetId: String(a.style_vector.asset_id), embedding: [],
+                          styleExtractModel: a.style_vector.style_extract_model,
+                          createdAt: a.style_vector.created_at?.split("T")[0] || "",
+                        });
+                      }
+                    }
+                    setStyles(freshStyles);
+                    if (selectedStyle?.id === styleId) setSelectedStyle(null);
                   }}
                 />
               </motion.div>

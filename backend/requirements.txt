@@ -9,9 +9,35 @@ passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
 celery[redis]==5.4.0
 redis==5.1.0
+slowapi==0.1.9
+email-validator==2.2.0
 onnxruntime==1.20.0
+httpx>=0.27
+python-dotenv>=1.0
 
-# AI models (production)
-# demucs
-# laion-clap
-# audiocraft
+# Audio processing (vocal separation + style extraction)
+torch>=2.0
+torchaudio>=2.0
+numpy>=1.24
+scipy>=1.11
+soundfile>=0.12
+librosa>=0.10
+pyworld>=0.3
+resampy>=0.4
+tensorboard>=2.14
+av>=10.0
+ffmpeg-python>=0.2
+faiss-cpu>=1.7
+
+# AI models (real inference)
+demucs
+laion-clap
+transformers>=4.40
+
+# HuggingFace Hub for downloading model checkpoints
+huggingface-hub>=0.20
+
+# RVC voice pipeline dependencies
+# Note: fairseq cannot be installed on Windows via pip.
+# The RVC feature extraction will use HuggingFace transformers as an alternative.
+# If you need full RVC on Windows, install fairseq via WSL2 or conda.

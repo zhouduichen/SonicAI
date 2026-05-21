@@ -1,0 +1,28 @@
+FROM python:3.12-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl supervisor build-essential libffi-dev ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Layer 1: Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Layer 2: Pre-cache ONNX CPU models (lightweight, ~520 MB)
+COPY precache_models.py setup_cpu_models.py ./
+RUN python3 setup_cpu_models.py || echo "ONNX setup skipped — mock mode will be used"
+
+# Layer 3: Application code
+COPY . .
+
+RUN mkdir -p /app/data/uploads /app/data/generated
+RUN chmod +x /app/entrypoint.sh
+
+EXPOSE 8000
+
+ENTRYPOINT ["/app/entrypoint.sh"]

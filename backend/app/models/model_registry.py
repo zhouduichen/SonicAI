@@ -13,6 +13,8 @@ class ModelInfo:
     quality: str
     speed: str
     embedding_dim: int | None = None
+    pros: list[str] | None = None
+    cons: list[str] | None = None
 
 
 # === Vocal Separation Models ===
@@ -25,6 +27,8 @@ VOCAL_SEP_MODELS: list[ModelInfo] = [
         vram_gb=6.5,
         quality="最高",
         speed="较慢",
+        pros=["业界最佳分离品质", "支持人声/鼓/贝斯/其他四轨分离", "对中文歌曲优化良好"],
+        cons=["处理速度较慢，单曲约 2-3 分钟", "需要 6.5GB+ VRAM", "CPU 模式几乎不可用"],
     ),
     ModelInfo(
         key="demucs_mdx_extra",
@@ -33,6 +37,8 @@ VOCAL_SEP_MODELS: list[ModelInfo] = [
         vram_gb=5.0,
         quality="很高",
         speed="中等",
+        pros=["优秀的人声隔离效果", "品质与速度均衡", "VRAM 需求适中"],
+        cons=["不分离鼓组轨道", "极端嘈杂环境下表现下降"],
     ),
     ModelInfo(
         key="demucs_6s",
@@ -41,6 +47,8 @@ VOCAL_SEP_MODELS: list[ModelInfo] = [
         vram_gb=4.5,
         quality="高",
         speed="中等",
+        pros=["6 轨完整分离", "适合多轨混音需求", "VRAM 需求适中"],
+        cons=["分离速度较 MDX 慢", "钢琴/吉他分离精度有限"],
     ),
     ModelInfo(
         key="spleeter_2stems",
@@ -49,6 +57,8 @@ VOCAL_SEP_MODELS: list[ModelInfo] = [
         vram_gb=1.5,
         quality="中",
         speed="很快",
+        pros=["极速处理，秒级完成", "CPU 可流畅运行", "资源占用极低"],
+        cons=["分离精度低于 Demucs", "仅支持人声/伴奏双轨"],
     ),
     ModelInfo(
         key="spleeter_5stems",
@@ -57,6 +67,8 @@ VOCAL_SEP_MODELS: list[ModelInfo] = [
         vram_gb=2.0,
         quality="中高",
         speed="快",
+        pros=["5 轨多乐器分离", "速度与品质平衡", "CPU 可运行"],
+        cons=["分离精度不如 Demucs", "不支持中文歌曲特化"],
     ),
 ]
 
@@ -77,6 +89,8 @@ STYLE_EXTRACT_MODELS: list[ModelInfo] = [
         quality="高",
         speed="快",
         embedding_dim=512,
+        pros=["通用音乐理解能力最强", "512 维高维度风格嵌入", "支持中英文描述匹配", "VRAM 需求低 (1.2GB)"],
+        cons=["对细分电子流派区分度有限"],
     ),
     ModelInfo(
         key="clap_msclap",
@@ -86,6 +100,8 @@ STYLE_EXTRACT_MODELS: list[ModelInfo] = [
         quality="很高",
         speed="中等",
         embedding_dim=1024,
+        pros=["1024 维更丰富嵌入", "流行/摇滚音乐分析精准", "流派判别力更强"],
+        cons=["推理速度略慢于 LAION 版", "VRAM 需求稍高"],
     ),
     ModelInfo(
         key="clap_htsat",
@@ -95,6 +111,8 @@ STYLE_EXTRACT_MODELS: list[ModelInfo] = [
         quality="最高",
         speed="较慢",
         embedding_dim=512,
+        pros=["最高品质音频理解", "对复杂音乐结构感知强", "512 维高质量嵌入"],
+        cons=["VRAM 需求较高 (3GB)", "加载和推理速度较慢"],
     ),
     ModelInfo(
         key="encodec_6kbps",
@@ -104,6 +122,8 @@ STYLE_EXTRACT_MODELS: list[ModelInfo] = [
         quality="中高",
         speed="很快",
         embedding_dim=128,
+        pros=["极速提取，秒级完成", "VRAM 极低 (0.8GB)", "CPU 友好，适合低配设备"],
+        cons=["嵌入维度低 (128D)", "风格细节捕捉有限", "风格迁移效果一般"],
     ),
 ]
 
@@ -122,6 +142,8 @@ MUSIC_GEN_MODELS: list[ModelInfo] = [
         vram_gb=2.5,
         quality="良好",
         speed="很快",
+        pros=["生成速度最快，约 30 秒/曲", "低 VRAM 友好 (2.5GB)", "适合快速灵感迭代"],
+        cons=["音质细节不足", "复杂提示理解有限", "低频丰满度不足"],
     ),
     ModelInfo(
         key="musicgen_medium",
@@ -130,6 +152,8 @@ MUSIC_GEN_MODELS: list[ModelInfo] = [
         vram_gb=5.0,
         quality="高",
         speed="中等",
+        pros=["音质与速度均衡", "风格跟随准确度高", "VRAM 需求适中 (5GB)"],
+        cons=["长曲目 (>2min) 结构松散", "极端风格组合可能退化"],
     ),
     ModelInfo(
         key="musicgen_large",
@@ -138,6 +162,8 @@ MUSIC_GEN_MODELS: list[ModelInfo] = [
         vram_gb=8.0,
         quality="最高",
         speed="较慢",
+        pros=["最高音质输出，接近专业水准", "复杂音乐结构理解力强", "多风格/多乐器融合自然"],
+        cons=["生成速度较慢，单曲约 3-5 分钟", "需要 8GB+ VRAM", "不支持实时预览"],
     ),
     ModelInfo(
         key="musicgen_melody",
@@ -146,6 +172,8 @@ MUSIC_GEN_MODELS: list[ModelInfo] = [
         vram_gb=5.5,
         quality="很高",
         speed="中等",
+        pros=["跟随参考音频和声结构", "旋律连贯性更好", "适合有明确旋律参考的创作"],
+        cons=["需要参考音频输入", "VRAM 需求较 Medium 略高"],
     ),
     ModelInfo(
         key="audioldm2",
@@ -154,6 +182,8 @@ MUSIC_GEN_MODELS: list[ModelInfo] = [
         vram_gb=6.0,
         quality="高",
         speed="较慢",
+        pros=["文本语义理解力最强", "创意/实验风格多样", "支持音效与环境声生成"],
+        cons=["音质一致性不稳定", "生成时间较长 (2-4 分钟)", "对音乐结构把控较弱"],
     ),
 ]
 

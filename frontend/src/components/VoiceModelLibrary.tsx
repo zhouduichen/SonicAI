@@ -51,7 +51,7 @@ export default function VoiceModelLibrary({ models, onSelect, onDelete, selected
               暂无声音模型
             </p>
             <p className="text-xs mt-1 font-mono tracking-wider" style={{ color: "var(--text-tertiary)" }}>
-              上传歌曲训练你的专属声音
+              上传多首歌曲训练你的专属声音
             </p>
           </div>
         ) : (

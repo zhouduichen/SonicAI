@@ -14,29 +14,41 @@ from app.tasks.voice_pipeline import train_voice_model, infer_rvc_vocals
 
 router = APIRouter(prefix="/voice", tags=["voice"])
 
-EPOCH_TARGETS = {"preview": 20, "standard": 100, "premium": 200}
-TIER_MILESTONES = [("preview", 20), ("standard", 100), ("premium", 200)]
+from app.services.voice_service import EPOCH_TARGETS, TIER_MILESTONES
 
 
 @router.post("/train", response_model=TrainVoiceResponse)
 def train(request: TrainVoiceRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    asset = db.query(AudioAsset).filter(
-        AudioAsset.id == request.audio_asset_id, AudioAsset.user_id == user.id
-    ).first()
-    if not asset:
-        raise HTTPException(status_code=404, detail="音频文件不存在")
-    if asset.status != "completed":
-        raise HTTPException(status_code=400, detail="音频尚未处理完成")
+    if not request.audio_asset_ids:
+        raise HTTPException(status_code=400, detail="至少需要选择一个音频文件")
+
+    assets = []
+    for aid in request.audio_asset_ids:
+        asset = db.query(AudioAsset).filter(
+            AudioAsset.id == aid, AudioAsset.user_id == user.id
+        ).first()
+        if not asset:
+            raise HTTPException(status_code=404, detail=f"音频文件 {aid} 不存在")
+        if asset.status != "completed":
+            raise HTTPException(status_code=400, detail=f"音频 {asset.file_name} 尚未处理完成")
+        assets.append(asset)
 
     model = voice_service.create_voice_model(
-        db, user.id, request.name, request.audio_asset_id, request.quality_target
+        db, user.id, request.name, request.audio_asset_ids, request.quality_target
     )
 
-    train_voice_model.delay(
-        model_id=model.id,
-        audio_path=asset.file_path,
-        quality_target=request.quality_target,
-    )
+    # Run training in background thread (no Celery/Redis needed)
+    import threading
+    audio_paths = [a.file_path for a in assets]
+    quality_target = request.quality_target
+    model_id = model.id
+
+    def _train_in_thread():
+        from app.tasks.voice_pipeline import train_voice_model_sync
+        train_voice_model_sync(model_id, audio_paths, quality_target)
+
+    t = threading.Thread(target=_train_in_thread, daemon=True)
+    t.start()
 
     return TrainVoiceResponse(model_id=model.id, status="preprocessing")
 
@@ -53,9 +65,7 @@ def get_status(model_id: int, db: Session = Depends(get_db), user: User = Depend
         if model.epoch >= tier_epochs:
             available_tiers.append(tier_name)
 
-    remaining = None
-    if model.status == "training" and model.epoch > 0:
-        remaining = (total_epochs - model.epoch) * 15
+    remaining = None  # epoch time varies too much to estimate statically
 
     return VoiceModelStatus(
         id=model.id,

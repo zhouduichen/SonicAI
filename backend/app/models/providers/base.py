@@ -7,8 +7,8 @@ class ModelProvider(ABC):
     """Base class for any AI model provider (local or API)."""
 
     @abstractmethod
-    def load(self) -> None:
-        """Load the model into memory/VRAM."""
+    def load(self, use_onnx: bool = False) -> None:
+        """Load the model into memory/VRAM. Set use_onnx=True for ONNX CPU path."""
 
     @abstractmethod
     def unload(self) -> None:

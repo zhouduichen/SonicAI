@@ -13,6 +13,7 @@ def _to_response(m: ModelInfo, installed: bool = False) -> ModelInfoResponse:
         key=m.key, display_name=m.display_name, description=m.description,
         vram_gb=m.vram_gb, quality=m.quality, speed=m.speed,
         embedding_dim=m.embedding_dim, installed=installed,
+        pros=m.pros, cons=m.cons,
     )
 
 

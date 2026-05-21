@@ -1,0 +1,12 @@
+# Lightweight CPU-only override (no GPU, no CUDA image)
+# Use: docker compose -f docker-compose.yml -f docker-compose.cpu.yml up -d
+version: "3.9"
+
+services:
+  backend:
+    build:
+      dockerfile: Dockerfile.cpu
+    environment:
+      - SONICAI_HARDWARE_TIER=cpu
+    deploy:
+      resources: {}

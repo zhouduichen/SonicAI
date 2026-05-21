@@ -15,18 +15,14 @@ interface GenerationConsoleProps {
   musicGenModel: string;
   onMusicGenModelChange: (model: string) => void;
   musicGenModels: ModelInfo[];
+  suggestions: string[];
+  suggestionsLoading: boolean;
 }
-
-const SUGGESTIONS = [
-  "一首适合深夜开车的 Lo-Fi 音乐",
-  "带有爵士钢琴元素的氛围电子乐",
-  "节奏轻快的夏日流行音乐",
-  "适合冥想的大自然白噪音",
-];
 
 export default function GenerationConsole({
   hasStyle, styleName, onGenerate, isGenerating,
   musicGenModel, onMusicGenModelChange, musicGenModels,
+  suggestions, suggestionsLoading,
 }: GenerationConsoleProps) {
   const [prompt, setPrompt] = useState("");
 
@@ -138,16 +134,16 @@ export default function GenerationConsole({
         {hasStyle && !prompt && (
           <div>
             <p className="text-[10px] font-mono tracking-wider mb-2" style={{ color: "var(--text-tertiary)" }}>
-              试试这些描述：
+              {suggestionsLoading ? "正在生成建议..." : "试试这些描述："}
             </p>
             <div className="flex gap-2 flex-wrap">
-              {SUGGESTIONS.map((s) => (
+              {suggestions.map((s) => (
                 <button
                   key={s}
                   onClick={() => setPrompt(s)}
                   className="btn-ghost"
                 >
-                  {s.slice(0, 18)}...
+                  {s}
                 </button>
               ))}
             </div>

@@ -12,9 +12,20 @@ settings = get_settings()
 class ResourceManager:
     """Ensures one model loaded at a time. Selects GPU>ONNX>Mock execution path."""
 
-    def __init__(self, vram_budget_gb: float = 16.0):
+    def __init__(self, vram_budget_gb: float | None = None):
         self._current: ModelProvider | None = None
-        self._vram_budget = vram_budget_gb
+        self._vram_budget = vram_budget_gb if vram_budget_gb is not None else self._default_budget()
+
+    @staticmethod
+    def _default_budget() -> float:
+        """Read VRAM budget from hardware tier config (via SONICAI_HARDWARE_TIER env)."""
+        try:
+            from app.core.config import get_tier_config
+            tier = settings.SONICAI_HARDWARE_TIER
+            config = get_tier_config(tier)
+            return config.max_vram_gb
+        except Exception:
+            return 16.0
 
     @property
     def vram_budget(self) -> float:
@@ -48,9 +59,10 @@ class ResourceManager:
         return provider.model_key in models
 
     def acquire(self, provider: ModelProvider) -> None:
-        """Load a model via the best available path."""
+        """Load a model via the best available path (GPU > ONNX > Mock)."""
         vram = provider.vram_required()
-        use_gpu = provider.supports_gpu() and self._gpu_available() and vram <= self._vram_budget
+        gpu_ok = provider.supports_gpu() and self._gpu_available() and vram <= self._vram_budget
+        use_gpu = gpu_ok
 
         if not use_gpu and not provider.supports_gpu():
             logger.info(f"Provider {provider.model_key} is CPU/ONNX-only, bypassing GPU path")
@@ -64,16 +76,23 @@ class ResourceManager:
             self._current.unload()
             self._current = None
 
-        if not use_gpu:
+        # Determine execution path
+        if use_gpu:
+            exec_path = "gpu"
+        elif self._onnx_model_exists(provider):
+            exec_path = "onnx"
+            logger.info(f"Using ONNX path for {provider.model_key}")
+        else:
+            exec_path = "mock"
             if provider.supports_gpu():
-                logger.info(
+                logger.warning(
                     f"GPU path unavailable for {provider.model_key}: "
                     f"vram={vram}GB budget={self._vram_budget}GB gpu={self._gpu_available()}. "
-                    f"Falling back to CPU/ONNX."
+                    f"ONNX models not found. Falling back to mock."
                 )
 
-        logger.info(f"Loading {provider.model_key} (use_gpu={use_gpu}, vram={vram}GB)")
-        provider.load()
+        logger.info(f"Loading {provider.model_key} (path={exec_path}, vram={vram}GB)")
+        provider.load(use_onnx=(exec_path == "onnx"))
         self._current = provider
 
     def release_all(self) -> None:
@@ -84,5 +103,5 @@ class ResourceManager:
             self._current = None
 
 
-# Module-level singleton — budget set per request by the pipeline
-resource_manager = ResourceManager(vram_budget_gb=16.0)
+# Module-level singleton — budget auto-detected from SONICAI_HARDWARE_TIER
+resource_manager = ResourceManager()

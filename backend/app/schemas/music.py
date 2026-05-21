@@ -31,3 +31,12 @@ class MusicResponse(BaseModel):
 class MusicListResponse(BaseModel):
     items: list[MusicResponse]
     total: int
+
+
+class SuggestionsRequest(BaseModel):
+    style_vector_id: int
+
+
+class SuggestionsResponse(BaseModel):
+    suggestions: list[str]
+    provider: str

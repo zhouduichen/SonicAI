@@ -3,32 +3,40 @@ version: "3.9"
 services:
   redis:
     image: redis:7-alpine
-    container_name: aimusic-redis
+    container_name: sonicai-redis
     ports:
       - "6379:6379"
-    restart: unless-stopped
     volumes:
       - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: aimusic-backend
+    container_name: sonicai-backend
     ports:
       - "8000:8000"
     environment:
       - SONICAI_HARDWARE_TIER=${SONICAI_HARDWARE_TIER:-mid}
       - SONICAI_PREFERENCE=${SONICAI_PREFERENCE:-speed}
       - REDIS_URL=redis://redis:6379/0
-      - DATABASE_URL=sqlite:///./aimusic.db
-      - SECRET_KEY=${SECRET_KEY:-dev-secret-key}
+      - DATABASE_URL=sqlite:////app/data/aimusic.db
+      - SECRET_KEY=${SECRET_KEY:-dev-secret-change-me-in-production}
+      - UPLOAD_DIR=/app/data/uploads
+      - GENERATED_DIR=/app/data/generated
+      - CORS_ORIGINS=["http://localhost:3000","http://127.0.0.1:3000"]
     volumes:
-      - ./backend/uploads:/app/uploads
-      - ./backend/generated:/app/generated
-      - sonicai_models:/root/.sonicai/models
+      - backend_data:/app/data
+      - model_cache:/root/.cache
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     restart: unless-stopped
     deploy:
       resources:
@@ -37,20 +45,29 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: aimusic-frontend
+      args:
+        - NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
+    container_name: sonicai-frontend
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=http://backend:8000/api/v1
+      - NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
     depends_on:
       - backend
     restart: unless-stopped
 
 volumes:
   redis_data:
-  sonicai_models:
+  backend_data:
+  model_cache:

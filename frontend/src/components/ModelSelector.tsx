@@ -110,6 +110,7 @@ export default function ModelSelector({
 
   const current = options.find((m) => m.key === selected);
   const displayName = current?.display_name || selected;
+  const sorted = [...options].sort((a, b) => b.vram_gb - a.vram_gb);
 
   const dropdown = (
     <AnimatePresence>
@@ -137,7 +138,7 @@ export default function ModelSelector({
             zIndex: 9999,
           }}
         >
-          {options.map((model) => {
+          {sorted.map((model) => {
             const active = model.key === selected;
             return (
               <div
@@ -231,19 +232,19 @@ export default function ModelSelector({
                 </div>
 
                 {/* Pros & Cons */}
-                {(model.pros.length > 0 || model.cons.length > 0) && (
+                {((model.pros && model.pros.length > 0) || (model.cons && model.cons.length > 0)) && (
                   <div
                     className="grid grid-cols-1 gap-2 mt-2 pt-2"
                     style={{ borderTop: "1px solid var(--border-light)" }}
                   >
-                    {model.pros.length > 0 && (
+                    {model.pros && model.pros.length > 0 && (
                       <div className="space-y-0.5">
                         {model.pros.map((p, i) => (
                           <ProConItem key={`pro-${i}`} text={p} kind="pro" />
                         ))}
                       </div>
                     )}
-                    {model.cons.length > 0 && (
+                    {model.cons && model.cons.length > 0 && (
                       <div className="space-y-0.5">
                         {model.cons.map((c, i) => (
                           <ProConItem key={`con-${i}`} text={c} kind="con" />
@@ -302,7 +303,7 @@ export default function ModelSelector({
       </button>
 
       {/* Current model summary (collapsed) */}
-      {current && !open && (current.pros.length > 0 || current.cons.length > 0) && (
+      {current && !open && ((current.pros && current.pros.length > 0) || (current.cons && current.cons.length > 0)) && (
         <div className="flex items-center gap-2 mt-1 px-1">
           <span
             className="text-[10px] font-mono tracking-[0.08em] uppercase"

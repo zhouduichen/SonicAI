@@ -3,31 +3,31 @@ set -e
 
 echo "=== SonicAI Backend ==="
 
+# Ensure data directories exist
+mkdir -p /app/data/uploads /app/data/generated
+
 # Check GPU
-if nvidia-smi &>/dev/null; then
+if nvidia-smi &>/dev/null 2>&1; then
     echo "GPU detected via nvidia-smi"
+    GPU_COUNT=$(nvidia-smi --query-gpu=name --format=csv,noheader | wc -l)
+    nvidia-smi --query-gpu=name --format=csv,noheader | while read -r gpu; do
+        echo "  GPU: $gpu"
+    done
 else
-    echo "No GPU detected — running CPU-only mode"
+    echo "No GPU detected - running CPU-only mode"
 fi
 
 # Read tier from env
-TIER="${SONICAI_HARDWARE_TIER:-ultra}"
+TIER="${SONICAI_HARDWARE_TIER:-mid}"
 echo "Hardware tier: $TIER"
 
-# Setup ONNX models if CPU tier and models not installed
-if [ "$TIER" = "cpu" ]; then
-    if [ ! -f "$HOME/.sonicai/models/model_manifest.json" ]; then
-        echo "CPU tier selected — installing ONNX models..."
-        python3 /app/scripts/setup_cpu_models.py || echo "ONNX setup failed, will use mock fallback"
-    else
-        echo "ONNX models already installed"
-    fi
-fi
-
 # Start supervisor (uvicorn + celery worker)
+mkdir -p /etc/supervisor/conf.d
 cat > /etc/supervisor/conf.d/sonicai.conf << 'SUPERVISOR_EOF'
 [supervisord]
 nodaemon=true
+logfile=/dev/stdout
+logfile_maxbytes=0
 
 [program:uvicorn]
 command=python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000
@@ -36,14 +36,20 @@ stdout_logfile=/dev/stdout
 stdout_logfile_maxbytes=0
 stderr_logfile=/dev/stderr
 stderr_logfile_maxbytes=0
+autostart=true
+autorestart=true
 
 [program:celery]
-command=python3 -m celery -A app.tasks.celery_app worker -l info -P solo
+command=python3 -m celery -A app.tasks.celery_app worker -l info -P solo --concurrency=1
 directory=/app
 stdout_logfile=/dev/stdout
 stdout_logfile_maxbytes=0
 stderr_logfile=/dev/stderr
 stderr_logfile_maxbytes=0
+autostart=true
+autorestart=true
+startsecs=5
 SUPERVISOR_EOF
 
+echo "Starting API server + Celery worker via supervisor..."
 exec supervisord -c /etc/supervisor/conf.d/sonicai.conf

@@ -173,8 +173,10 @@ export default function SongCreator({ voiceModels, styles, selectedStyle, onStyl
               style={{ padding: "8px 36px 8px 12px", fontSize: "0.8125rem" }}
             >
               <option value="">纯器乐（没有人声）...</option>
-              {voiceModels.filter(m => m.status === "ready").map((m) => (
-                <option key={m.id} value={m.id}>{m.name}</option>
+              {voiceModels.map((m) => (
+                <option key={m.id} value={m.id} disabled={m.status !== "ready"}>
+                  {m.name}{m.status !== "ready" ? ` (${m.status === "pending" ? "未训练" : m.status})` : ""}
+                </option>
               ))}
             </select>
           </div>
