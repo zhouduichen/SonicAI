@@ -16,7 +16,7 @@ import ErrorBoundary from "@/components/ErrorBoundary";
 import SettingsPanel from "@/components/SettingsPanel";
 import { getTierConfig } from "@/lib/hardware-tiers";
 import { useModelCatalog } from "@/lib/use-model-catalog";
-import type { AudioAsset, StyleTag, GeneratedMusic, VoiceModel, HardwareTier, PreferenceMode, ProcessingMode, Song } from "@/types";
+import type { AudioAsset, StyleTag, GeneratedMusic, VoiceModel, VocalGeneration, HardwareTier, PreferenceMode, ProcessingMode, Song } from "@/types";
 import { API_BASE, authHeaders, getToken } from "@/lib/auth";
 
 async function uploadAudio(
