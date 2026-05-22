@@ -623,14 +623,16 @@ def train_voice_model(self, model_id: int, audio_paths: list[str], quality_targe
         raise
 
 
-@celery_app.task(bind=True, name="infer_rvc_vocals")
-def infer_rvc_vocals(self, generation_id: int, voice_model_id: int, reference_audio_path: str):
-    """Convert reference vocals to target voice using trained RVC model."""
+def infer_rvc_vocals_sync(generation_id: int, voice_model_id: int, reference_audio_path: str):
+    """Run RVC voice inference synchronously (no Celery needed).
+
+    Called from a background thread by the /voice/sing API endpoint.
+    """
     from app.core.database import SessionLocal
     from app.models.voice_model import VoiceModel
     from app.models.vocal_generation import VocalGeneration
 
-    logger.info(f"infer_rvc_vocals: generation_id={generation_id} model_id={voice_model_id}")
+    logger.info(f"infer_rvc_vocals_sync: generation_id={generation_id} model_id={voice_model_id}")
 
     output_dir = os.path.join(settings.GENERATED_DIR, "vocals")
     os.makedirs(output_dir, exist_ok=True)
@@ -643,7 +645,12 @@ def infer_rvc_vocals(self, generation_id: int, voice_model_id: int, reference_au
             if not model or model.status != "ready":
                 raise ValueError("Voice model not ready")
 
+            if not model.checkpoint_path or not os.path.exists(model.checkpoint_path):
+                raise ValueError(f"Voice model checkpoint not found: {model.checkpoint_path}")
+
             gen = db.query(VocalGeneration).filter(VocalGeneration.id == generation_id).first()
+            if not gen:
+                raise ValueError(f"VocalGeneration {generation_id} not found")
             gen.status = "processing"
             db.commit()
 
@@ -659,10 +666,12 @@ def infer_rvc_vocals(self, generation_id: int, voice_model_id: int, reference_au
             gen.duration_seconds = _get_audio_duration(output_path)
             db.commit()
 
+            logger.info(f"infer_rvc_vocals_sync complete: {output_path}")
             return {"stage": "completed", "generation_id": generation_id, "output_path": output_path}
         finally:
             db.close()
     except Exception as e:
+        logger.error(f"Voice inference failed: {e}", exc_info=True)
         db = SessionLocal()
         try:
             gen = db.query(VocalGeneration).filter(VocalGeneration.id == generation_id).first()
@@ -671,8 +680,13 @@ def infer_rvc_vocals(self, generation_id: int, voice_model_id: int, reference_au
                 db.commit()
         finally:
             db.close()
-        logger.error(f"Voice inference failed: {e}")
         raise
+
+
+@celery_app.task(bind=True, name="infer_rvc_vocals")
+def infer_rvc_vocals(self, generation_id: int, voice_model_id: int, reference_audio_path: str):
+    """Convert reference vocals to target voice using trained RVC model (Celery task)."""
+    return infer_rvc_vocals_sync(generation_id, voice_model_id, reference_audio_path)
 
 
 def _get_audio_duration(filepath: str) -> float:

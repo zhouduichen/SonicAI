@@ -17,41 +17,7 @@ import SettingsPanel from "@/components/SettingsPanel";
 import { getTierConfig } from "@/lib/hardware-tiers";
 import { useModelCatalog } from "@/lib/use-model-catalog";
 import type { AudioAsset, StyleTag, GeneratedMusic, VoiceModel, HardwareTier, PreferenceMode, ProcessingMode, Song } from "@/types";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
-
-let cachedToken: string | null = null;
-let tokenExpiry: number = 0;
-
-async function getToken(): Promise<string> {
-  if (cachedToken && Date.now() < tokenExpiry) return cachedToken;
-  const res = await fetch(`${API_BASE}/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username: "admin", password: "admin123" }),
-  });
-  if (!res.ok) throw new Error("Auth failed");
-  const data = await res.json();
-  cachedToken = data.access_token || null;
-  tokenExpiry = Date.now() + 23 * 60 * 60 * 1000; // refresh 1h before 24h expiry
-  if (!cachedToken) throw new Error("No token in auth response");
-  return cachedToken;
-}
-
-async function authHeaders(): Promise<Record<string, string>> {
-  return { Authorization: `Bearer ${await getToken()}` };
-}
-
-async function authFetch(url: string, init?: RequestInit): Promise<Response> {
-  let res = await fetch(url, { ...init, headers: { ...init?.headers, ...(await authHeaders()) } });
-  // Retry once on 401 with fresh token
-  if (res.status === 401) {
-    cachedToken = null;
-    tokenExpiry = 0;
-    res = await fetch(url, { ...init, headers: { ...init?.headers, ...(await authHeaders()) } });
-  }
-  return res;
-}
+import { API_BASE, authHeaders, getToken } from "@/lib/auth";
 
 async function uploadAudio(
   file: File,
@@ -193,14 +159,31 @@ async function apiPollVoiceStatus(modelId: string): Promise<{ status: string; cu
   return res.json();
 }
 
-async function apiSingVoice(voiceModelId: string, referenceAudioId: string): Promise<{ generation_id: number }> {
-  const res = await fetch(`${API_BASE}/voice/sing`, {
+async function apiSingVoice(voiceModelId: string, referenceAudioId: string, processingMode: ProcessingMode = "auto"): Promise<{ generation_id: number; status?: string }> {
+  const res = await fetch(`${API_BASE}/voice/sing?processing_mode=${processingMode}`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...(await authHeaders()) },
     body: JSON.stringify({ voice_model_id: Number(voiceModelId), reference_audio_id: Number(referenceAudioId) }),
   });
-  if (!res.ok) throw new Error("Vocal generation failed");
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "人声生成请求失败" }));
+    throw new Error(err.detail || `请求失败 (${res.status})`);
+  }
   return res.json();
+}
+
+async function apiPollVocalGeneration(generationId: number): Promise<VocalGeneration> {
+  const res = await fetch(`${API_BASE}/voice/generations/${generationId}`, { headers: await authHeaders() });
+  if (!res.ok) throw new Error("Status check failed");
+  const data = await res.json();
+  return {
+    id: String(data.id),
+    voiceModelId: String(data.voice_model_id),
+    outputPath: data.output_path || "",
+    status: data.status,
+    durationSeconds: data.duration_seconds || 0,
+    createdAt: data.created_at || "",
+  };
 }
 
 async function apiFetchSuggestions(styleVectorId: number): Promise<string[]> {
@@ -251,6 +234,8 @@ export default function CreatePage() {
   const [isTraining, setIsTraining] = useState(false);
   const [singRefAssetId, setSingRefAssetId] = useState("");
   const [isSinging, setIsSinging] = useState(false);
+  const [singError, setSingError] = useState<string | null>(null);
+  const [vocalGenerations, setVocalGenerations] = useState<VocalGeneration[]>([]);
   const [songs, setSongs] = useState<Song[]>([]);
 
   // Model selection — controlled by user, sent to backend
@@ -593,6 +578,7 @@ export default function CreatePage() {
           filePath: m.file_path,
           duration: m.duration_seconds,
           musicGenModel: m.music_gen_model,
+          providerMode: (m as any).provider_mode || "mock",
           createdAt: m.created_at?.split("T")[0] || "",
         }));
         setPlaylist(loadedPlaylist);
@@ -643,6 +629,37 @@ export default function CreatePage() {
     return () => { cancelled = true; };
   }, [activeTab]);
 
+  // Fetch songs when switching to song or history tab
+  useEffect(() => {
+    if (activeTab !== "song" && activeTab !== "history") return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/song/list`, { headers: await authHeaders() });
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+        if (!cancelled && data.items) {
+          setSongs(data.items.map((item: any) => ({
+            id: String(item.id),
+            theme: item.theme || "",
+            status: item.status,
+            lyrics: item.lyrics || "",
+            instrumentalPath: item.instrumental_path || "",
+            vocalPath: item.vocal_path || "",
+            mixedPath: item.mixed_path || "",
+            createdAt: item.created_at || "",
+            errorMessage: item.error_message || "",
+            lyricsProvider: item.lyrics_provider || "",
+            instrumentalProvider: item.instrumental_provider || "",
+            vocalProvider: item.vocal_provider || "",
+            hasVocals: item.has_vocals ?? false,
+          })));
+        }
+      } catch { /* ignore */ }
+    })();
+    return () => { cancelled = true; };
+  }, [activeTab]);
+
   // Poll training voice models
   useEffect(() => {
     const trainingIds = voiceModels
@@ -674,6 +691,39 @@ export default function CreatePage() {
     }, 3000);
     return () => { active = false; clearInterval(interval); };
   }, [voiceModels]);
+
+  // Poll in-progress vocal generations
+  useEffect(() => {
+    const inProgressIds = vocalGenerations
+      .filter((g) => g.status === "pending" || g.status === "processing")
+      .map((g) => g.id);
+    if (inProgressIds.length === 0) return;
+
+    let active = true;
+    const interval = setInterval(async () => {
+      if (!active) return;
+      const updated = await Promise.all(
+        inProgressIds.map(async (id) => {
+          try {
+            return await apiPollVocalGeneration(Number(id));
+          } catch {
+            return null;
+          }
+        })
+      );
+      if (!active) return;
+      setVocalGenerations((prev) =>
+        prev.map((g) => {
+          const u = updated.find((x) => x?.id === g.id);
+          return u || g;
+        })
+      );
+      if (updated.every((x) => !x || x.status === "completed" || x.status === "failed")) {
+        clearInterval(interval);
+      }
+    }, 3000);
+    return () => { active = false; clearInterval(interval); };
+  }, [vocalGenerations]);
 
   const handleDeleteVoice = useCallback(async (id: string) => {
     setVoiceModels((prev) => prev.filter((m) => m.id !== id));
@@ -712,12 +762,53 @@ export default function CreatePage() {
   const handleSingVoiceClick = useCallback(async () => {
     if (!selectedVoiceId || !singRefAssetId) return;
     setIsSinging(true);
+    setSingError(null);
     try {
-      await apiSingVoice(selectedVoiceId, singRefAssetId);
+      const { generation_id, status: immediateStatus } = await apiSingVoice(selectedVoiceId, singRefAssetId, processingMode);
       setSingRefAssetId("");
-    } catch { /* silently fail */ }
-    setIsSinging(false);
-  }, [selectedVoiceId, singRefAssetId]);
+
+      const newGen: VocalGeneration = {
+        id: String(generation_id),
+        voiceModelId: selectedVoiceId,
+        outputPath: "",
+        status: immediateStatus === "completed" ? "completed" : immediateStatus === "processing" ? "processing" : "pending",
+        durationSeconds: 0,
+        createdAt: new Date().toISOString(),
+      };
+      setVocalGenerations((prev) => [newGen, ...prev]);
+
+      if (immediateStatus === "completed") {
+        setIsSinging(false);
+        return;
+      }
+
+      // Poll for completion
+      const interval = setInterval(async () => {
+        try {
+          const status = await apiPollVocalGeneration(generation_id);
+          setVocalGenerations((prev) =>
+            prev.map((g) => (g.id === String(generation_id) ? status : g))
+          );
+          if (status.status === "completed" || status.status === "failed") {
+            clearInterval(interval);
+            setIsSinging(false);
+            if (status.status === "failed") {
+              setSingError("人声生成失败，请检查声音模型和参考音频");
+            }
+          }
+        } catch {
+          // Keep polling
+        }
+      }, 2000);
+      setTimeout(() => {
+        clearInterval(interval);
+        setIsSinging(false);
+      }, 300000);
+    } catch (e: any) {
+      setSingError(e.message || "人声生成失败");
+      setIsSinging(false);
+    }
+  }, [selectedVoiceId, singRefAssetId, processingMode]);
 
   return (
     <div className="flex min-h-[100dvh]">
@@ -1060,6 +1151,56 @@ export default function CreatePage() {
                       >
                         {isSinging ? "生成中..." : "生成人声"}
                       </button>
+                      {singError && (
+                        <p className="text-xs" style={{ color: "#ef4444" }}>{singError}</p>
+                      )}
+                      {!singError && processingMode === "async" && (
+                        <p className="text-[10px] opacity-60" style={{ color: "var(--text-tertiary)" }}>
+                          需要 Redis + Celery Worker 运行中
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Vocal Generation Results */}
+                {vocalGenerations.length > 0 && (
+                  <div className="card-outer">
+                    <div className="card-inner p-6 space-y-3">
+                      <div className="flex items-center gap-2">
+                        <span className="eyebrow">结果</span>
+                        <h3 className="text-lg italic font-medium" style={{ color: "var(--text-primary)", fontFamily: "'Playfair Display', serif" }}>
+                          人声生成记录
+                        </h3>
+                      </div>
+                      {vocalGenerations.slice(0, 5).map((gen) => (
+                        <div key={gen.id} className="flex items-center justify-between py-2" style={{ borderBottom: "1px solid var(--border-color)" }}>
+                          <div className="flex items-center gap-3">
+                            <span
+                              className="w-2 h-2 rounded-full"
+                              style={{
+                                background: gen.status === "completed" ? "#22c55e" : gen.status === "failed" ? "#ef4444" : gen.status === "processing" ? "#e8a840" : "#666",
+                              }}
+                            />
+                            <div>
+                              <p className="text-xs" style={{ color: "var(--text-primary)" }}>
+                                {gen.status === "completed" ? "生成完成" : gen.status === "failed" ? "生成失败" : gen.status === "processing" ? "生成中..." : "排队中"}
+                              </p>
+                              <p className="text-[9px] font-mono opacity-60" style={{ color: "var(--text-tertiary)" }}>
+                                {gen.durationSeconds > 0 ? `${gen.durationSeconds.toFixed(1)}s` : ""} · {gen.createdAt?.slice(0, 16) || ""}
+                              </p>
+                            </div>
+                          </div>
+                          {gen.status === "completed" && gen.outputPath && (
+                            <audio
+                              controls
+                              className="h-7"
+                              src={`${API_BASE}/voice/generations/${gen.id}/download`}
+                              style={{ maxWidth: "200px" }}
+                            />
+                          )}
+                        </div>
+                      ))}
                     </div>
                   </div>
                 )}
@@ -1081,6 +1222,35 @@ export default function CreatePage() {
 
             {activeTab === "history" && (
               <motion.div key="history" animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} transition={{ duration: 0.3 }} className="max-w-3xl space-y-5">
+                {songs.length > 0 && (
+                  <div className="card-outer">
+                    <div className="card-inner p-5 space-y-3">
+                      <span className="eyebrow">歌曲历史</span>
+                      {songs.slice(0, 10).map((song) => (
+                        <div key={song.id} className="flex items-center justify-between py-2" style={{ borderBottom: "1px solid var(--border-color)" }}>
+                          <div>
+                            <p className="text-sm" style={{ color: "var(--text-primary)" }}>{song.theme}</p>
+                            <p className="text-[10px] font-mono" style={{ color: "var(--text-tertiary)" }}>
+                              {song.status === "completed" ? (
+                                <span style={{ color: "#22c55e" }}>
+                                  {song.hasVocals ? "已合成人声" : "纯伴奏"}
+                                </span>
+                              ) : song.status === "failed" ? (
+                                <span style={{ color: "#ef4444" }}>失败</span>
+                              ) : (
+                                <span>{song.status}</span>
+                              )}
+                              {" · "}{song.createdAt?.slice(0, 10)}
+                            </p>
+                          </div>
+                          {song.status === "completed" && (
+                            <audio controls className="h-7" src={`${API_BASE}/song/${song.id}/download`} style={{ maxWidth: "180px" }} />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <Playlist items={playlist} currentPlayingId={currentPlayingId} onPlay={handlePlay} />
                 {currentPlayingMusic && (
                   <MusicPlayer

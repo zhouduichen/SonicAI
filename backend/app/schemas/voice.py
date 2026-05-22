@@ -72,6 +72,15 @@ class VocalGenerationResponse(BaseModel):
         from_attributes = True
 
 
+class VocalGenerationStatusResponse(BaseModel):
+    id: int
+    voice_model_id: int
+    status: str
+    output_path: str = ""
+    duration_seconds: float = 0.0
+    created_at: datetime
+
+
 class VocalGenerationListResponse(BaseModel):
     items: list[VocalGenerationResponse]
     total: int

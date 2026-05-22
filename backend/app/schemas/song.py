@@ -25,6 +25,11 @@ class SongStatusResponse(BaseModel):
     instrumental_path: str
     vocal_path: str
     mixed_path: str
+    error_message: str = ""
+    lyrics_provider: str = ""
+    instrumental_provider: str = ""
+    vocal_provider: str = ""
+    has_vocals: bool = False
     created_at: datetime
 
     class Config:

@@ -3,8 +3,12 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+
+os.environ.setdefault("SECRET_KEY", "test-secret-key")
+
 from app.core.database import Base, get_db
 from app.main import app
+from app.services.auth_service import create_default_user
 
 TEST_DB_URL = "sqlite:///./test.db"
 engine = create_engine(TEST_DB_URL, connect_args={"check_same_thread": False})
@@ -13,7 +17,11 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 
 @pytest.fixture(autouse=True)
 def clean_db():
-    Base.metadata.drop_all(bind=engine)
+    # Ensure fresh tables by deleting the test DB file first
+    try:
+        os.unlink("test.db")
+    except OSError:
+        pass
     Base.metadata.create_all(bind=engine)
     yield
     Base.metadata.drop_all(bind=engine)
@@ -35,6 +43,8 @@ def db():
 
 @pytest.fixture
 def client(db):
+    create_default_user(db)
+
     def _get_db_override():
         try:
             yield db

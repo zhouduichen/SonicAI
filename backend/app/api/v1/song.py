@@ -1,22 +1,49 @@
 import os
-from fastapi import APIRouter, Depends, HTTPException
+import logging
+import threading
+from typing import Literal
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from app.core.deps import get_db, get_current_user
 from app.models.user import User
-from app.models import GeneratedMusic, AudioAsset
+from app.models import GeneratedMusic, AudioAsset, StyleVector, VoiceModel
 from app.schemas.song import (
     SongCreateRequest, SongCreateResponse,
     SongStatusResponse, SongListResponse,
 )
 from app.services import song_service
-from app.tasks.song_pipeline import create_song
+from app.tasks.song_pipeline import create_song as create_song_task, run_song_pipeline_sync
 
 router = APIRouter(prefix="/song", tags=["song"])
+logger = logging.getLogger(__name__)
 
 
 @router.post("/create", response_model=SongCreateResponse)
-def create(request: SongCreateRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def create(
+    request: SongCreateRequest,
+    processing_mode: Literal["sync", "async", "auto"] = Query("auto"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if request.style_vector_id:
+        style = db.query(StyleVector).filter(
+            StyleVector.id == request.style_vector_id,
+            StyleVector.user_id == user.id,
+        ).first()
+        if not style:
+            raise HTTPException(status_code=404, detail="风格标签不存在")
+
+    if request.voice_model_id:
+        voice_model = db.query(VoiceModel).filter(
+            VoiceModel.id == request.voice_model_id,
+            VoiceModel.user_id == user.id,
+        ).first()
+        if not voice_model:
+            raise HTTPException(status_code=404, detail="声音模型不存在")
+        if voice_model.status != "ready":
+            raise HTTPException(status_code=400, detail="声音模型尚未训练完成")
+
     song = song_service.create_song(
         db, user.id, request.theme,
         style_vector_id=request.style_vector_id,
@@ -42,13 +69,40 @@ def create(request: SongCreateRequest, db: Session = Depends(get_db), user: User
         if reference_audio_path:
             song_service.update_song(db, song.id, user.id, reference_vocal_path=reference_audio_path)
 
-    create_song.delay(
-        song_id=song.id,
-        theme=request.theme,
-        voice_model_id=request.voice_model_id,
-        style_vector_id=request.style_vector_id,
-        reference_audio_path=reference_audio_path,
-    )
+    if processing_mode == "sync":
+        run_song_pipeline_sync(
+            song_id=song.id,
+            theme=request.theme,
+            voice_model_id=request.voice_model_id,
+            style_vector_id=request.style_vector_id,
+            reference_audio_path=reference_audio_path,
+        )
+    elif processing_mode == "async":
+        try:
+            create_song_task.delay(
+                song_id=song.id,
+                theme=request.theme,
+                voice_model_id=request.voice_model_id,
+                style_vector_id=request.style_vector_id,
+                reference_audio_path=reference_audio_path,
+            )
+        except Exception as e:
+            raise HTTPException(status_code=503, detail=f"后台队列不可用: {e}") from e
+    else:
+        # Default local mode: no Redis/Celery required, and the request returns immediately.
+        thread = threading.Thread(
+            target=run_song_pipeline_sync,
+            kwargs={
+                "song_id": song.id,
+                "theme": request.theme,
+                "voice_model_id": request.voice_model_id,
+                "style_vector_id": request.style_vector_id,
+                "reference_audio_path": reference_audio_path,
+            },
+            daemon=True,
+        )
+        thread.start()
+
     return SongCreateResponse(song_id=song.id)
 
 
@@ -70,10 +124,27 @@ def get_status(song_id: int, db: Session = Depends(get_db), user: User = Depends
 
 
 @router.get("/{song_id}/download")
-def download(song_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def download(
+    song_id: int,
+    stem: str = Query("mixed", pattern="^(mixed|instrumental|vocal)$"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     song = song_service.get_song(db, song_id, user.id)
     if not song:
         raise HTTPException(status_code=404, detail="歌曲不存在")
-    if not song.mixed_path or not os.path.exists(song.mixed_path):
-        raise HTTPException(status_code=404, detail="歌曲文件尚未生成")
-    return FileResponse(song.mixed_path, media_type="audio/wav", filename=f"song_{song_id}.wav")
+
+    if stem == "mixed":
+        path = song.mixed_path
+    elif stem == "instrumental":
+        path = song.instrumental_path
+    elif stem == "vocal":
+        path = song.vocal_path
+    else:
+        path = song.mixed_path
+
+    if not path or not os.path.exists(path):
+        stem_labels = {"mixed": "混音", "instrumental": "伴奏", "vocal": "人声"}
+        raise HTTPException(status_code=404, detail=f"{stem_labels.get(stem, stem)}文件尚未生成")
+
+    return FileResponse(path, media_type="audio/wav", filename=f"song_{song_id}_{stem}.wav")

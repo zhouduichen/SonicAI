@@ -1,4 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException
+import os
+import logging
+from typing import Literal
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from app.core.deps import get_db, get_current_user
 from app.models.user import User
@@ -8,11 +11,13 @@ from app.schemas.voice import (
     VoiceModelStatus, VoiceModelResponse, VoiceModelListResponse,
     SingRequest, SingResponse,
     VocalGenerationResponse, VocalGenerationListResponse,
+    VocalGenerationStatusResponse,
 )
 from app.services import voice_service
-from app.tasks.voice_pipeline import train_voice_model, infer_rvc_vocals
+from app.tasks.voice_pipeline import train_voice_model, infer_rvc_vocals, infer_rvc_vocals_sync
 
 router = APIRouter(prefix="/voice", tags=["voice"])
+logger = logging.getLogger(__name__)
 
 from app.services.voice_service import EPOCH_TARGETS, TIER_MILESTONES
 
@@ -97,27 +102,80 @@ def delete_model(model_id: int, db: Session = Depends(get_db), user: User = Depe
 
 
 @router.post("/sing", response_model=SingResponse)
-def sing(request: SingRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def sing(
+    request: SingRequest,
+    processing_mode: Literal["sync", "async", "auto"] = Query("auto"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     model = voice_service.get_voice_model(db, request.voice_model_id, user.id)
     if not model:
         raise HTTPException(status_code=404, detail="声音模型不存在")
     if model.status != "ready":
         raise HTTPException(status_code=400, detail="声音模型尚未训练完成")
+    if not model.checkpoint_path or not os.path.exists(model.checkpoint_path):
+        raise HTTPException(status_code=400, detail="声音模型检查点文件不存在，请重新训练")
 
     ref_audio = db.query(AudioAsset).filter(
         AudioAsset.id == request.reference_audio_id, AudioAsset.user_id == user.id
     ).first()
     if not ref_audio:
         raise HTTPException(status_code=404, detail="参考音频不存在")
+    if not os.path.exists(ref_audio.file_path):
+        raise HTTPException(status_code=400, detail="参考音频文件不存在")
 
     gen = voice_service.create_vocal_generation(db, user.id, request.voice_model_id, request.reference_audio_id)
-    infer_rvc_vocals.delay(
-        generation_id=gen.id,
-        voice_model_id=model.id,
-        reference_audio_path=ref_audio.file_path,
-    )
 
-    return SingResponse(generation_id=gen.id, status="pending")
+    if processing_mode == "sync":
+        try:
+            result = infer_rvc_vocals_sync(
+                generation_id=gen.id,
+                voice_model_id=model.id,
+                reference_audio_path=ref_audio.file_path,
+            )
+            return SingResponse(
+                generation_id=gen.id,
+                status=result.get("stage", "completed"),
+                message="人声生成完成" if result.get("stage") == "completed" else "人声生成失败",
+            )
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"人声生成失败: {e}") from e
+    elif processing_mode == "async":
+        try:
+            infer_rvc_vocals.delay(
+                generation_id=gen.id,
+                voice_model_id=model.id,
+                reference_audio_path=ref_audio.file_path,
+            )
+            return SingResponse(generation_id=gen.id, status="pending")
+        except Exception as e:
+            raise HTTPException(
+                status_code=503,
+                detail=f"后台队列不可用 (Redis/Celery 未启动): {e}",
+            ) from e
+    else:
+        # "auto": try async first, fall back to sync in background thread
+        try:
+            infer_rvc_vocals.delay(
+                generation_id=gen.id,
+                voice_model_id=model.id,
+                reference_audio_path=ref_audio.file_path,
+            )
+            return SingResponse(generation_id=gen.id, status="pending")
+        except Exception as e:
+            logger.warning(f"Celery unavailable ({e}), running RVC inference in background thread")
+            import threading
+            t = threading.Thread(
+                target=infer_rvc_vocals_sync,
+                kwargs={
+                    "generation_id": gen.id,
+                    "voice_model_id": model.id,
+                    "reference_audio_path": ref_audio.file_path,
+                },
+                daemon=True,
+            )
+            t.start()
+            return SingResponse(generation_id=gen.id, status="processing")
 
 
 @router.get("/generations", response_model=VocalGenerationListResponse)
@@ -127,3 +185,37 @@ def list_generations(db: Session = Depends(get_db), user: User = Depends(get_cur
         items=[VocalGenerationResponse.model_validate(g) for g in items],
         total=len(items),
     )
+
+
+@router.get("/generations/{generation_id}", response_model=VocalGenerationStatusResponse)
+def get_generation_status(
+    generation_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    gen = voice_service.get_vocal_generation(db, generation_id, user.id)
+    if not gen:
+        raise HTTPException(status_code=404, detail="人声生成记录不存在")
+    return VocalGenerationStatusResponse(
+        id=gen.id,
+        voice_model_id=gen.voice_model_id,
+        status=gen.status,
+        output_path=gen.output_path or "",
+        duration_seconds=gen.duration_seconds or 0.0,
+        created_at=gen.created_at,
+    )
+
+
+@router.get("/generations/{generation_id}/download")
+def download_generation(
+    generation_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    from fastapi.responses import FileResponse
+    gen = voice_service.get_vocal_generation(db, generation_id, user.id)
+    if not gen:
+        raise HTTPException(status_code=404, detail="人声生成记录不存在")
+    if not gen.output_path or not os.path.exists(gen.output_path):
+        raise HTTPException(status_code=404, detail="人声文件尚未生成")
+    return FileResponse(gen.output_path, media_type="audio/wav", filename=f"vocal_{generation_id}.wav")

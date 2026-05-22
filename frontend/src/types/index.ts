@@ -24,6 +24,7 @@ export interface GeneratedMusic {
   filePath: string;
   duration: number;
   musicGenModel?: string;
+  providerMode?: "real" | "mock";
   createdAt: string;
   isPlaying?: boolean;
 }
@@ -120,4 +121,16 @@ export interface Song {
   vocalPath: string;
   mixedPath: string;
   createdAt: string;
+  errorMessage?: string;
+  lyricsProvider?: string;
+  instrumentalProvider?: string;
+  vocalProvider?: string;
+  hasVocals?: boolean;
+  providerMode?: "real" | "mock";
+}
+
+export interface ServiceStatus {
+  backend: { running: boolean; port: number; managed: boolean };
+  redis: { running: boolean };
+  celery: { running: boolean };
 }

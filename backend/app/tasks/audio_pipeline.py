@@ -155,6 +155,7 @@ def process_music_generation(
                 file_path=result["file_path"],
                 duration_seconds=result["duration_seconds"],
                 music_gen_model=music_gen_model,
+                provider_mode=result.get("provider_mode", "mock"),
             )
             db.add(music)
             db.commit()
@@ -165,6 +166,7 @@ def process_music_generation(
                 "music_id": music.id, "file_path": music.file_path,
                 "title": music.title, "duration_seconds": music.duration_seconds,
                 "music_gen_model": music_gen_model,
+                "provider_mode": music.provider_mode,
             })
             return {
                 "stage": "completed", "music_id": music.id,
@@ -236,6 +238,7 @@ def process_blend_generation(
                 file_path=result["file_path"],
                 duration_seconds=result["duration_seconds"],
                 music_gen_model=music_gen_model,
+                provider_mode=result.get("provider_mode", "mock"),
             )
             db.add(music)
             db.commit()
@@ -246,6 +249,7 @@ def process_blend_generation(
                 "music_id": music.id, "file_path": music.file_path,
                 "title": music.title, "duration_seconds": music.duration_seconds,
                 "music_gen_model": music_gen_model,
+                "provider_mode": music.provider_mode,
             })
             return {
                 "stage": "completed", "music_id": music.id,
@@ -289,6 +293,7 @@ def process_batch_generation(
                 file_path=result["file_path"],
                 duration_seconds=result["duration_seconds"],
                 music_gen_model=music_gen_model,
+                provider_mode=result.get("provider_mode", "mock"),
             )
             db.add(music)
             db.commit()
@@ -299,6 +304,7 @@ def process_batch_generation(
                 "batch_id": batch_id, "prompt": text_prompt, "model": music_gen_model,
                 "music_id": music.id, "file_path": music.file_path,
                 "title": music.title, "duration_seconds": music.duration_seconds,
+                "provider_mode": music.provider_mode,
             })
             return {
                 "stage": "completed", "music_id": music.id, "batch_id": batch_id,

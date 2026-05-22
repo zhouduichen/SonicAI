@@ -75,6 +75,13 @@ def create_vocal_generation(db: Session, user_id: int, voice_model_id: int, refe
     return gen
 
 
+def get_vocal_generation(db: Session, generation_id: int, user_id: int) -> VocalGeneration | None:
+    return db.query(VocalGeneration).filter(
+        VocalGeneration.id == generation_id,
+        VocalGeneration.user_id == user_id,
+    ).first()
+
+
 def list_user_vocal_generations(db: Session, user_id: int) -> list[VocalGeneration]:
     return (
         db.query(VocalGeneration)

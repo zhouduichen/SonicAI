@@ -23,5 +23,5 @@ celery_app.conf.update(
     result_backend_max_connections=20,
 )
 
-# Auto-discover tasks from the audio_pipeline module
-celery_app.autodiscover_tasks(["app.tasks.audio_pipeline", "app.tasks.voice_pipeline"])
+# Auto-discover tasks from pipeline modules.
+celery_app.autodiscover_tasks(["app.tasks.audio_pipeline", "app.tasks.voice_pipeline", "app.tasks.song_pipeline"])

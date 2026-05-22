@@ -49,8 +49,10 @@ FALLBACK_LYRICS = """【主歌1】
 旋律响起的时候 我们依然在一起"""
 
 
-def _generate_lyrics(theme: str) -> str:
-    """Generate lyrics via LLM. Tries OpenAI (DeepSeek) → Ollama → fallback."""
+def _generate_lyrics(theme: str) -> tuple[str, str]:
+    """Generate lyrics via LLM. Tries OpenAI (DeepSeek) -> Ollama -> fallback.
+    Returns (lyrics, provider_name).
+    """
     # Tier 1: OpenAI-compatible (DeepSeek)
     if settings.OPENAI_API_KEY:
         try:
@@ -70,7 +72,7 @@ def _generate_lyrics(theme: str) -> str:
                     content = choices[0]["message"]["content"]
                     if content.strip():
                         logger.info("Lyrics generated via OpenAI/DeepSeek")
-                        return content.strip()
+                        return content.strip(), "openai"
         except Exception as e:
             logger.warning(f"OpenAI lyrics failed: {e}")
 
@@ -86,13 +88,41 @@ def _generate_lyrics(theme: str) -> str:
             content = resp.json().get("response", "")
             if content.strip():
                 logger.info("Lyrics generated via Ollama")
-                return content.strip()
+                return content.strip(), "ollama"
     except Exception as e:
         logger.warning(f"Ollama lyrics failed: {e}")
 
-    # Tier 3: Fallback
+    # Tier 3: Fallback with theme interpolation
     logger.info("Using fallback lyrics")
-    return FALLBACK_LYRICS
+    fallback = _build_fallback_lyrics(theme)
+    return fallback, "fallback"
+
+
+def _build_fallback_lyrics(theme: str) -> str:
+    """Build fallback lyrics that at least interpolate the theme keyword."""
+    return f"""【主歌1】
+    {theme}的风吹过你的脸庞
+    我站在街角看夕阳渐渐落下
+    不知道未来的路会通向何方
+    但此刻只想把这首歌唱给你听
+
+    【主歌2】
+    回忆像电影在脑海里回放
+    每一个画面都那么清晰又温暖
+    关于{theme}的故事还在继续
+    就让我用音乐来诉说这份情感
+
+    【副歌】
+    这是我的歌 唱出心中的声音
+    每一个音符都是对{theme}的心意
+    这是我们的歌 不管过了多少年
+    旋律响起的时候 我们依然在一起
+
+    【副歌（重复）】
+    这是我的歌 唱出心中的声音
+    每一个音符都是对{theme}的心意
+    这是我们的歌 不管过了多少年
+    旋律响起的时候 我们依然在一起"""
 
 
 def _mix_audio(instrumental_path: str, vocal_path: str, output_path: str):
@@ -118,6 +148,25 @@ def create_song(self, song_id: int, theme: str,
                 style_vector_id: int | None = None,
                 reference_audio_path: str | None = None):
     """Full song creation pipeline: lyrics → instrumental → vocals → mix."""
+    return run_song_pipeline_sync(
+        song_id=song_id,
+        theme=theme,
+        voice_model_id=voice_model_id,
+        style_vector_id=style_vector_id,
+        reference_audio_path=reference_audio_path,
+        task_id=self.request.id,
+    )
+
+
+def run_song_pipeline_sync(
+    song_id: int,
+    theme: str,
+    voice_model_id: int | None = None,
+    style_vector_id: int | None = None,
+    reference_audio_path: str | None = None,
+    task_id: str = "",
+):
+    """Run the full song creation pipeline in-process for Redis-free installs."""
     from app.core.database import SessionLocal
     from app.models.song import Song
     from app.models.voice_model import VoiceModel
@@ -125,8 +174,8 @@ def create_song(self, song_id: int, theme: str,
     from app.tasks.audio_pipeline import _generate_music
     from app.tasks.voice_pipeline import _rvc_infer
     from app.models.providers.resource_manager import resource_manager
+    from app.models.providers.local_musicgen import MUSICGEN_AVAILABLE, AUDIOLDM_AVAILABLE
 
-    task_id = self.request.id
     logger.info(f"create_song: song_id={song_id} theme={theme} voice_model={voice_model_id}")
 
     output_dir = os.path.join(settings.GENERATED_DIR, "songs", str(song_id))
@@ -142,8 +191,9 @@ def create_song(self, song_id: int, theme: str,
             # Step 1: Generate lyrics
             song.status = "writing"
             db.commit()
-            lyrics = _generate_lyrics(theme)
+            lyrics, lyrics_provider = _generate_lyrics(theme)
             song.lyrics = lyrics
+            song.lyrics_provider = lyrics_provider
             db.commit()
 
             # Step 2: Generate instrumental (MusicGen)
@@ -157,27 +207,29 @@ def create_song(self, song_id: int, theme: str,
                     embedding = json.loads(sv.embedding)
 
             instrumental_path = os.path.join(output_dir, "instrumental.wav")
+            instrumental_result = None
             if embedding:
-                result = _generate_music(embedding, music_prompt, task_id=task_id)
-                if os.path.exists(result.get("file_path", "")):
-                    shutil.copy(result["file_path"], instrumental_path)
+                instrumental_result = _generate_music(embedding, music_prompt, task_id=task_id)
             else:
-                result = _generate_music([0.0] * 512, music_prompt, task_id=task_id)
-                if os.path.exists(result.get("file_path", "")):
-                    shutil.copy(result["file_path"], instrumental_path)
+                instrumental_result = _generate_music([0.0] * 512, music_prompt, task_id=task_id)
+
+            if instrumental_result and os.path.exists(instrumental_result.get("file_path", "")):
+                shutil.copy(instrumental_result["file_path"], instrumental_path)
 
             song.instrumental_path = instrumental_path
+            song.instrumental_provider = instrumental_result.get("provider_mode", "mock") if instrumental_result else "mock"
             db.commit()
             resource_manager.release_all()
 
-            # Step 3: Generate vocals (RVC)
+            # Step 3: Generate vocals (RVC) - only if voice model is ready
             song.status = "singing"
             db.commit()
             vocal_path = os.path.join(output_dir, "vocals.wav")
+            vocal_generated = False
 
             if voice_model_id:
                 model = db.query(VoiceModel).filter(VoiceModel.id == voice_model_id).first()
-                if model and model.status == "ready":
+                if model and model.status == "ready" and model.checkpoint_path:
                     ref_audio = reference_audio_path or instrumental_path
                     try:
                         _rvc_infer(
@@ -187,38 +239,55 @@ def create_song(self, song_id: int, theme: str,
                             output_path=vocal_path,
                         )
                         song.vocal_path = vocal_path
+                        song.vocal_provider = "rvc"
+                        song.has_vocals = True
+                        vocal_generated = True
                     except Exception as e:
                         logger.warning(f"RVC inference failed: {e}")
-                        shutil.copy(instrumental_path, vocal_path)
-                        song.vocal_path = vocal_path
+                        song.error_message = f"人声生成失败: {e}"
+                        song.vocal_provider = "rvc_failed"
                 else:
-                    shutil.copy(instrumental_path, vocal_path)
-                    song.vocal_path = vocal_path
+                    song.vocal_provider = "no_ready_model"
             else:
-                shutil.copy(instrumental_path, vocal_path)
-                song.vocal_path = vocal_path
+                song.vocal_provider = "none"
+
             db.commit()
 
-            # Step 4: Mix instrumental + vocals
+            # Step 4: Mix - use instrumental only if no vocals generated
             song.status = "mixing"
             db.commit()
             mixed_path = os.path.join(output_dir, "mixed.wav")
-            _mix_audio(instrumental_path, vocal_path, mixed_path)
+
+            if vocal_generated and os.path.exists(vocal_path):
+                _mix_audio(instrumental_path, vocal_path, mixed_path)
+            else:
+                # Instrumental only — no fake vocals
+                shutil.copy(instrumental_path, mixed_path)
+
             song.mixed_path = mixed_path
             song.status = "completed"
             db.commit()
 
-            return {"stage": "completed", "song_id": song_id, "mixed_path": mixed_path}
+            return {
+                "stage": "completed",
+                "song_id": song_id,
+                "mixed_path": mixed_path,
+                "lyrics_provider": lyrics_provider,
+                "instrumental_provider": song.instrumental_provider,
+                "vocal_provider": song.vocal_provider,
+                "has_vocals": vocal_generated,
+            }
         finally:
             db.close()
     except Exception as e:
+        logger.error(f"Song creation failed: {e}", exc_info=True)
         db = SessionLocal()
         try:
             song = db.query(Song).filter(Song.id == song_id).first()
             if song:
                 song.status = "failed"
+                song.error_message = str(e)[:500]
                 db.commit()
         finally:
             db.close()
-        logger.error(f"Song creation failed: {e}")
         raise

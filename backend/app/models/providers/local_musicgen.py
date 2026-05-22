@@ -147,6 +147,7 @@ class LocalMusicGenProvider(MusicGenProvider):
         if getattr(self, "_use_onnx", False):
             result = self._infer_onnx(embedding, text_prompt, output_path)
             if result is not None:
+                result["provider_mode"] = "real"
                 return result
 
         if MUSICGEN_AVAILABLE and self._model is not None and not self._key.startswith("audioldm"):
@@ -161,7 +162,7 @@ class LocalMusicGenProvider(MusicGenProvider):
                 wav = wav_tokens[0].cpu()
                 torchaudio.save(output_path, wav, 32000)
                 duration = int(wav.shape[-1] / 32000)
-                return {"file_path": output_path, "duration_seconds": duration}
+                return {"file_path": output_path, "duration_seconds": duration, "provider_mode": "real"}
             except Exception as e:
                 logger.error(f"MusicGen generation failed: {e}")
 
@@ -176,4 +177,4 @@ class LocalMusicGenProvider(MusicGenProvider):
                 value = int(12000 * math.sin(2.0 * math.pi * 440 * i / sample_rate))
                 wav.writeframes(struct.pack("<h", value))
 
-        return {"file_path": output_path, "duration_seconds": duration}
+        return {"file_path": output_path, "duration_seconds": duration, "provider_mode": "mock"}

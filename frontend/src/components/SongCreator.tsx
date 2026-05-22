@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { MusicNotes, Spinner } from "@phosphor-icons/react";
 import type { Song, VoiceModel, StyleTag, GeneratedMusic } from "@/types";
+import { API_BASE, authHeaders } from "@/lib/auth";
 
 const STEP_LABELS: Record<string, string> = {
   writing: "写词中...",
@@ -12,6 +13,25 @@ const STEP_LABELS: Record<string, string> = {
   completed: "完成!",
   failed: "失败",
 };
+
+function normalizeSong(raw: any): Song {
+  return {
+    id: String(raw.id),
+    theme: raw.theme || "",
+    status: raw.status,
+    lyrics: raw.lyrics || "",
+    instrumentalPath: raw.instrumentalPath || raw.instrumental_path || "",
+    vocalPath: raw.vocalPath || raw.vocal_path || "",
+    mixedPath: raw.mixedPath || raw.mixed_path || "",
+    createdAt: raw.createdAt || raw.created_at || "",
+    errorMessage: raw.errorMessage || raw.error_message || "",
+    lyricsProvider: raw.lyricsProvider || raw.lyrics_provider || "",
+    instrumentalProvider: raw.instrumentalProvider || raw.instrumental_provider || "",
+    vocalProvider: raw.vocalProvider || raw.vocal_provider || "",
+    hasVocals: raw.hasVocals ?? raw.has_vocals ?? false,
+    providerMode: raw.providerMode || raw.provider_mode || "mock",
+  };
+}
 
 interface SongCreatorProps {
   voiceModels: VoiceModel[];
@@ -29,6 +49,7 @@ export default function SongCreator({ voiceModels, styles, selectedStyle, onStyl
   const [referenceMusicId, setReferenceMusicId] = useState("");
   const [creating, setCreating] = useState(false);
   const [currentSong, setCurrentSong] = useState<Song | null>(null);
+  const [songAudioUrl, setSongAudioUrl] = useState("");
 
   useEffect(() => {
     if (selectedStyle) {
@@ -36,19 +57,43 @@ export default function SongCreator({ voiceModels, styles, selectedStyle, onStyl
     }
   }, [selectedStyle?.id]);
 
-  const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+  useEffect(() => {
+    if (currentSong?.status !== "completed") return;
+    let cancelled = false;
+    let objectUrl = "";
+
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/song/${currentSong.id}/download`, {
+          headers: await authHeaders(),
+        });
+        if (!res.ok) return;
+        const blob = await res.blob();
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(blob);
+        setSongAudioUrl(objectUrl);
+      } catch {
+        setSongAudioUrl("");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [currentSong?.id, currentSong?.status]);
 
   const handleCreate = async () => {
     if (!theme.trim()) return;
     setCreating(true);
     setCurrentSong(null);
+    setSongAudioUrl("");
     try {
-      const token = localStorage.getItem("sonicai_token") || "";
       const res = await fetch(`${API_BASE}/song/create`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(await authHeaders()),
         },
         body: JSON.stringify({
           theme: theme.trim(),
@@ -62,9 +107,11 @@ export default function SongCreator({ voiceModels, styles, selectedStyle, onStyl
 
       const interval = setInterval(async () => {
         try {
-          const sr = await fetch(`${API_BASE}/song/status/${song_id}`);
+          const sr = await fetch(`${API_BASE}/song/status/${song_id}`, {
+            headers: await authHeaders(),
+          });
           if (!sr.ok) return;
-          const song: Song = await sr.json();
+          const song = normalizeSong(await sr.json());
           setCurrentSong(song);
           if (song.status === "completed" || song.status === "failed") {
             clearInterval(interval);
@@ -226,16 +273,52 @@ export default function SongCreator({ voiceModels, styles, selectedStyle, onStyl
             )}
 
             {currentSong.status === "completed" && (
-              <div>
-                <p className="text-sm" style={{ color: "#22c55e" }}>创作完成!</p>
-                {currentSong.mixedPath && (
-                  <audio controls className="w-full mt-3" src={currentSong.mixedPath} />
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-sm" style={{ color: "#22c55e" }}>创作完成!</p>
+                  {currentSong.lyricsProvider && (
+                    <span className="text-[9px] font-mono px-2 py-0.5 rounded-full"
+                      style={{ background: "var(--bg-tertiary)", color: "var(--text-tertiary)" }}>
+                      词: {currentSong.lyricsProvider}
+                    </span>
+                  )}
+                  {currentSong.instrumentalProvider && (
+                    <span className={`text-[9px] font-mono px-2 py-0.5 rounded-full ${currentSong.instrumentalProvider === "mock" ? "mocked" : ""}`}
+                      style={{
+                        background: currentSong.instrumentalProvider === "mock" ? "rgba(232,168,64,0.15)" : "var(--bg-tertiary)",
+                        color: currentSong.instrumentalProvider === "mock" ? "#e8a840" : "var(--text-tertiary)",
+                      }}>
+                      曲: {currentSong.instrumentalProvider === "mock" ? "模拟" : "AI"}
+                    </span>
+                  )}
+                  {currentSong.hasVocals ? (
+                    <span className="text-[9px] font-mono px-2 py-0.5 rounded-full"
+                      style={{ background: "rgba(34,197,94,0.15)", color: "#22c55e" }}>
+                      已合成人声
+                    </span>
+                  ) : (
+                    <span className="text-[9px] font-mono px-2 py-0.5 rounded-full"
+                      style={{ background: "var(--bg-tertiary)", color: "var(--text-tertiary)" }}>
+                      纯伴奏
+                    </span>
+                  )}
+                </div>
+                {currentSong.errorMessage && (
+                  <p className="text-xs" style={{ color: "#e8a840" }}>{currentSong.errorMessage}</p>
+                )}
+                {songAudioUrl && (
+                  <audio controls className="w-full mt-3" src={songAudioUrl} />
                 )}
               </div>
             )}
 
             {currentSong.status === "failed" && (
-              <p className="text-sm" style={{ color: "#ef4444" }}>创作失败，请重试</p>
+              <div className="space-y-2">
+                <p className="text-sm" style={{ color: "#ef4444" }}>创作失败</p>
+                {currentSong.errorMessage && (
+                  <p className="text-xs opacity-80" style={{ color: "#ef4444" }}>{currentSong.errorMessage}</p>
+                )}
+              </div>
             )}
           </div>
         </div>

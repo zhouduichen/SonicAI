@@ -162,12 +162,16 @@ if __name__ == "__main__":
 
     print()
     print("=" * 50)
-    print(f"  模式: {mode}")
-    print(f"  后端 API : http://localhost:8000/docs")
-    print(f"  前端界面 : http://localhost:3000")
+    print(f"  Mode: {mode}")
+    print(f"  Backend API : http://localhost:8000/docs")
+    print(f"  Frontend    : http://localhost:3000")
     if ASYNC:
-        print(f"  控制面板 : http://localhost:5000")
-    print("  Ctrl+C 停止全部")
+        print(f"  Flower      : http://localhost:5000 (celery flower --port 5000)")
+    print()
+    print("  Logs are printed inline above.")
+    print("  Use --async for Redis + Celery worker background mode.")
+    print("  Run 'python verify_models.py' to check AI dependencies.")
+    print("  Ctrl+C to stop all services.")
     print("=" * 50)
 
     try:

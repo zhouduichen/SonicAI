@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, func
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Boolean, func
 from app.core.database import Base
 
 
@@ -16,4 +16,9 @@ class Song(Base):
     mixed_path = Column(String(512), default="")
     reference_vocal_path = Column(String(512), default="")
     status = Column(String(20), default="pending")
+    error_message = Column(Text, default="")
+    lyrics_provider = Column(String(32), default="")
+    instrumental_provider = Column(String(32), default="")
+    vocal_provider = Column(String(32), default="")
+    has_vocals = Column(Boolean, default=False)
     created_at = Column(DateTime, server_default=func.now())

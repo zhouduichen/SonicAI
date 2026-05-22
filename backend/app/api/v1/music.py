@@ -54,6 +54,7 @@ def _sync_generate_music(
                 file_path=result["file_path"],
                 duration_seconds=result["duration_seconds"],
                 music_gen_model=music_gen_model,
+                provider_mode=result.get("provider_mode", "mock"),
             )
             db.add(music)
             db.commit()
@@ -66,6 +67,7 @@ def _sync_generate_music(
                 "title": music.title,
                 "duration_seconds": music.duration_seconds,
                 "music_gen_model": music_gen_model,
+                "provider_mode": music.provider_mode,
             }
         finally:
             db.close()
@@ -146,7 +148,7 @@ def list_music(
     total = db.query(GeneratedMusic).filter(GeneratedMusic.user_id == user.id).count()
 
     return MusicListResponse(
-        items=[MusicResponse(**{**item, "music_gen_model": item.get("music_gen_model", "musicgen_small")}) for item in items],
+        items=[MusicResponse(**{**item, "music_gen_model": item.get("music_gen_model", "musicgen_small"), "provider_mode": item.get("provider_mode", "mock")}) for item in items],
         total=total,
     )
 

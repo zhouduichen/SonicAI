@@ -5,27 +5,7 @@ import { Play, Pause, SkipBack, SkipForward, Download, Waveform, ChartBar } from
 import { motion } from "framer-motion";
 import type { GeneratedMusic } from "@/types";
 import WaveformViewer from "./WaveformViewer";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
-
-// Shared auth token cache (same pattern as page.tsx)
-let cachedToken: string | null = null;
-let tokenExpiry: number = 0;
-
-async function getAuthToken(): Promise<string> {
-  if (cachedToken && Date.now() < tokenExpiry) return cachedToken;
-  const res = await fetch(`${API_BASE}/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username: "admin", password: "admin123" }),
-  });
-  if (!res.ok) throw new Error("Auth failed");
-  const data = await res.json();
-  cachedToken = data.access_token || null;
-  tokenExpiry = Date.now() + 23 * 60 * 60 * 1000;
-  if (!cachedToken) throw new Error("No token in auth response");
-  return cachedToken;
-}
+import { API_BASE, getToken } from "@/lib/auth";
 
 interface MusicPlayerProps {
   music: GeneratedMusic | null;
@@ -69,7 +49,7 @@ export default function MusicPlayer({ music, hasPrev, hasNext, onPrev, onNext }:
 
     (async () => {
       try {
-        const token = await getAuthToken();
+        const token = await getToken();
         const res = await fetch(resolveAudioUrl(music), {
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -105,8 +85,9 @@ export default function MusicPlayer({ music, hasPrev, hasNext, onPrev, onNext }:
   useEffect(() => {
     return () => {
       if (audioUrl) URL.revokeObjectURL(audioUrl);
-      if (audioCtxRef.current?.state !== "closed") {
-        audioCtxRef.current.close().catch(() => {});
+      const audioCtx = audioCtxRef.current;
+      if (audioCtx && audioCtx.state !== "closed") {
+        audioCtx.close().catch(() => {});
       }
     };
   }, []);

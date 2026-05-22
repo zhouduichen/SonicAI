@@ -22,6 +22,7 @@ class MusicResponse(BaseModel):
     file_path: str
     duration_seconds: int
     music_gen_model: str = "musicgen_small"
+    provider_mode: str = "mock"
     created_at: datetime
 
     class Config:
