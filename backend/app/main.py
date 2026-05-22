@@ -4,7 +4,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from app.core.config import get_settings
-from app.core.database import engine, Base, SessionLocal
+from app.core.database import engine, Base, SessionLocal, _auto_migrate_sqlite
 from app.models import User, AudioAsset, StyleVector, GeneratedMusic, Song  # noqa: F401 — register models
 from app.api.v1 import auth, audio, music, models as models_api, voice, song
 from app.api.v1.config import router as config_router
@@ -47,6 +47,7 @@ def startup():
     """Create tables and ensure default user exists."""
     if not settings.SECRET_KEY:
         raise RuntimeError("SECRET_KEY must be set in environment or .env file")
+    _auto_migrate_sqlite()
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:

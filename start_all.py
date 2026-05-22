@@ -1,9 +1,11 @@
-"""Start SonicAI services in one terminal.
+"""Start SonicAI with self-healing: kill stale processes, clean caches, migrate DB, then launch.
 
-    python start_all.py          # sync mode: backend + frontend only
-    python start_all.py --async  # async mode: redis + backend + celery + frontend
+    python start_all.py              # sync mode:  backend + frontend
+    python start_all.py --async      # async mode: redis + backend + celery + frontend
+    python start_all.py --reset      # also delete DB for fresh start (loses old data)
+    python start_all.py --clean      # also delete uploads/generated/cache dirs
 
-With sync mode (default in Settings), no Redis or Celery is needed.
+Nothing else to do — just run this one command and wait for the services to come up.
 """
 
 import subprocess
@@ -14,17 +16,27 @@ import time
 import signal
 import threading
 import shutil
+import http.client
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 BACKEND = os.path.join(ROOT, "backend")
 FRONTEND = os.path.join(ROOT, "frontend")
-processes = []
 
+RESET = "--reset" in sys.argv
+CLEAN = "--clean" in sys.argv
 ASYNC = "--async" in sys.argv
+
+processes: list[tuple[str, subprocess.Popen]] = []
+
+
+# ── helpers ──────────────────────────────────────────────────────────────────
+
+def _log(name: str, msg: str):
+    ts = time.strftime("%H:%M:%S")
+    print(f"[{ts}] [{name}] {msg}")
 
 
 def _find_node() -> str:
-    """Return the full path to node.exe, falling back to 'node' on PATH."""
     candidates = [
         r"C:\Program Files\nodejs\node.exe",
         r"C:\Program Files (x86)\nodejs\node.exe",
@@ -37,7 +49,6 @@ def _find_node() -> str:
 
 
 def _find_npm() -> str:
-    """Return npm.cmd path on Windows, or 'npm' on Unix."""
     if sys.platform == "win32":
         npm_cmd = os.path.join(os.path.dirname(_find_node()), "npm.cmd")
         if os.path.exists(npm_cmd):
@@ -45,16 +56,16 @@ def _find_npm() -> str:
     return "npm"
 
 
-def _kill_port(port: int):
-    """Kill the process occupying the given port (returns True if freed)."""
+def _kill_port(port: int, label: str = ""):
     import socket
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.settimeout(1)
     busy = sock.connect_ex(("127.0.0.1", port)) == 0
     sock.close()
     if not busy:
-        return True  # port is already free
+        return True
 
+    _log("CLEAN", f"Port {port} in use{(' (' + label + ')') if label else ''}, killing...")
     if sys.platform == "win32":
         try:
             result = subprocess.run(
@@ -64,29 +75,40 @@ def _kill_port(port: int):
             for line in result.stdout.splitlines():
                 m = re.search(r"LISTENING\s+(\d+)", line)
                 if m:
-                    pid = m.group(1)
-                    print(f"  [WARN] Port {port} occupied by PID {pid}, reclaiming...")
                     subprocess.run(
-                        f"taskkill /F /T /PID {pid}", shell=True,
+                        f"taskkill /F /T /PID {m.group(1)}", shell=True,
                         capture_output=True
                     )
-                    return True
-            return False
+            time.sleep(1)
+            return True
         except Exception:
             return False
     else:
         try:
-            result = subprocess.run(
-                ["lsof", "-ti", f":{port}"], capture_output=True, text=True
-            )
-            pid = result.stdout.strip()
-            if pid:
-                print(f"  [WARN] Port {port} occupied by PID {pid}, reclaiming...")
+            result = subprocess.run(["lsof", "-ti", f":{port}"], capture_output=True, text=True)
+            for pid in result.stdout.strip().splitlines():
                 subprocess.run(["kill", "-9", pid])
-                return True
-            return False
+            time.sleep(1)
+            return True
         except Exception:
             return False
+
+
+def _wait_http(url: str, timeout: int = 30) -> bool:
+    """Poll an HTTP URL until it returns 200 or timeout expires."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            conn = http.client.HTTPConnection(url.replace("http://", "").split("/")[0], timeout=3)
+            conn.request("GET", "/" + "/".join(url.split("/")[3:]) if "/" in url[8:] else "/")
+            resp = conn.getresponse()
+            conn.close()
+            if resp.status == 200:
+                return True
+        except Exception:
+            pass
+        time.sleep(0.5)
+    return False
 
 
 def _find_redis() -> str | None:
@@ -105,12 +127,15 @@ def _find_redis() -> str | None:
 
 def stream_output(name, pipe):
     for line in iter(pipe.readline, ""):
-        print(f"[{name}] {line.rstrip()}")
+        line = line.rstrip()
+        if line:
+            ts = time.strftime("%H:%M:%S")
+            print(f"[{ts}] [{name}] {line}")
     pipe.close()
 
 
 def start(name, cmd, cwd=None):
-    print(f"  [{name}] Starting...")
+    _log(name, "Starting...")
     p = subprocess.Popen(
         cmd, cwd=cwd or ROOT,
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
@@ -122,57 +147,143 @@ def start(name, cmd, cwd=None):
 
 
 def cleanup(sig=None, frame=None):
-    print("\nShutting down all services...")
+    print(f"\n[---] Shutting down all services...")
     for name, p in processes:
-        p.terminate()
+        try:
+            p.terminate()
+        except Exception:
+            pass
     sys.exit(0)
 
 
 signal.signal(signal.SIGINT, cleanup)
 signal.signal(signal.SIGTERM, cleanup)
 
+
+# ── main ─────────────────────────────────────────────────────────────────────
+
 if __name__ == "__main__":
-    mode = "异步(队列)" if ASYNC else "同步(即时)"
-    print("=" * 50)
-    print(f"  SonicAI — {mode}模式")
-    print("=" * 50)
+    mode_label = "async (Redis + Celery)" if ASYNC else "sync (no Redis needed)"
+    print("=" * 60)
+    print(f"  SonicAI  |  {mode_label}")
+    print("=" * 60)
 
-    # Backend API (always needed)
+    # ── 1. Clean stale state ──────────────────────────────────────────────────
+    print()
+    _log("CLEAN", "Stopping stale processes...")
+    _kill_port(8000, "backend")
+    _kill_port(3000, "frontend")
+
+    _log("CLEAN", "Removing frontend build cache...")
+    next_dir = os.path.join(FRONTEND, ".next")
+    if os.path.exists(next_dir):
+        try:
+            shutil.rmtree(next_dir)
+        except Exception:
+            pass
+
+    if CLEAN:
+        for d in ["uploads", "generated"]:
+            path = os.path.join(BACKEND, d)
+            if os.path.exists(path):
+                _log("CLEAN", f"Removing {d}/ ...")
+                try:
+                    shutil.rmtree(path)
+                except Exception as e:
+                    _log("CLEAN", f"  (could not remove {d}: {e})")
+        # Also clean Python bytecode cache
+        for root, dirs, files in os.walk(BACKEND):
+            if "__pycache__" in dirs:
+                d = os.path.join(root, "__pycache__")
+                try:
+                    shutil.rmtree(d)
+                except Exception:
+                    pass
+
+    if RESET:
+        db_path = os.path.join(BACKEND, "aimusic.db")
+        if os.path.exists(db_path):
+            _log("CLEAN", f"Deleting {db_path} (--reset)")
+            try:
+                os.unlink(db_path)
+            except Exception as e:
+                _log("CLEAN", f"  Could not delete DB: {e}")
+
+    # ── 2. Migrate database ───────────────────────────────────────────────────
+    print()
+    _log("MIGRATE", "Running Alembic migrations...")
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "alembic", "upgrade", "head"],
+            cwd=BACKEND, capture_output=True, text=True, timeout=30,
+        )
+        for line in result.stdout.splitlines():
+            if line.strip():
+                _log("MIGRATE", line.strip())
+        if result.returncode != 0:
+            for line in result.stderr.splitlines():
+                if line.strip():
+                    _log("MIGRATE", f"[err] {line.strip()}")
+            _log("MIGRATE", "Migration FAILED — schema may be stale. Use --reset to start fresh.")
+    except Exception as e:
+        _log("MIGRATE", f"Migration error: {e}")
+
+    # ── 3. Start backend ──────────────────────────────────────────────────────
+    print()
     start("Backend", [sys.executable, "-m", "uvicorn", "app.main:app", "--reload", "--port", "8000"], cwd=BACKEND)
-    time.sleep(1.5)
 
+    _log("WAIT", "Waiting for backend to be ready...")
+    if _wait_http("http://localhost:8000/api/health", timeout=20):
+        _log("WAIT", "Backend is ready!")
+    else:
+        _log("WAIT", "Backend not responding yet — continuing anyway (may need a moment)")
+
+    # ── 4. Start Redis + Celery (async only) ──────────────────────────────────
     if ASYNC:
-        # Redis
+        print()
         redis_path = _find_redis()
         if redis_path:
             start("Redis", [redis_path])
+            time.sleep(1)
         else:
-            print("  [Redis] SKIP: redis-server not found (install Redis or use Docker)")
+            _log("SKIP", "redis-server not found — install Redis or use Docker")
+
+        start("Celery", [
+            sys.executable, "-m", "celery",
+            "-A", "app.tasks.celery_app", "worker",
+            "-l", "info", "-P", "solo",
+        ], cwd=BACKEND)
         time.sleep(1)
 
-        # Celery worker
-        start("Celery", [sys.executable, "-m", "celery", "-A", "app.tasks.celery_app", "worker", "-l", "info", "-P", "solo"], cwd=BACKEND)
-        time.sleep(1)
-
-    # Frontend (always needed) — reclaim port 3000 first
-    _kill_port(3000)
+    # ── 5. Start frontend ─────────────────────────────────────────────────────
+    print()
+    _kill_port(3000, "frontend")
     node_exe = _find_node()
     next_cli = os.path.join(FRONTEND, "node_modules", "next", "dist", "bin", "next")
+
     start("Frontend", [node_exe, next_cli, "dev", "-p", "3000"], cwd=FRONTEND)
 
+    _log("WAIT", "Waiting for frontend to be ready...")
+    if _wait_http("http://localhost:3000", timeout=30):
+        _log("WAIT", "Frontend is ready!")
+    else:
+        _log("WAIT", "Frontend still compiling — it'll be ready shortly")
+
+    # ── 6. Done ───────────────────────────────────────────────────────────────
     print()
-    print("=" * 50)
-    print(f"  Mode: {mode}")
-    print(f"  Backend API : http://localhost:8000/docs")
-    print(f"  Frontend    : http://localhost:3000")
+    print("=" * 60)
+    print(f"  Mode:       {mode_label}")
+    print(f"  Backend:    http://localhost:8000/docs")
+    print(f"  Frontend:   http://localhost:3000")
     if ASYNC:
-        print(f"  Flower      : http://localhost:5000 (celery flower --port 5000)")
+        print(f"  Monitoring: http://localhost:5000 (celery flower)")
     print()
-    print("  Logs are printed inline above.")
-    print("  Use --async for Redis + Celery worker background mode.")
-    print("  Run 'python verify_models.py' to check AI dependencies.")
-    print("  Ctrl+C to stop all services.")
-    print("=" * 50)
+    print("  Tips:")
+    print("    python start_all.py --reset   # fresh start (deletes old DB)")
+    print("    python start_all.py --clean   # also clean uploads/caches")
+    print("    python start_all.py --async   # enable background job queue")
+    print("    Ctrl+C to stop everything")
+    print("=" * 60)
 
     try:
         while True:
