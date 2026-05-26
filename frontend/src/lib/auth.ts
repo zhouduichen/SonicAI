@@ -14,6 +14,25 @@ let tokenExpiry = 0;
 let loginPromise: Promise<string> | null = null;
 
 export async function login(username: string, password: string): Promise<string> {
+  if (DEMO_MODE) {
+    const res = await fetch(`${API_BASE}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    }).catch(() => null);
+    if (res?.ok) {
+      const data = await res.json();
+      cachedToken = data.access_token || null;
+      if (cachedToken) {
+        tokenExpiry = Date.now() + 23 * 60 * 60 * 1000;
+        return cachedToken;
+      }
+    }
+    // Generate demo token locally when backend is unreachable
+    cachedToken = btoa(`demo:${username}:${Date.now()}`);
+    tokenExpiry = Date.now() + 23 * 60 * 60 * 1000;
+    return cachedToken;
+  }
   const res = await fetch(`${API_BASE}/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

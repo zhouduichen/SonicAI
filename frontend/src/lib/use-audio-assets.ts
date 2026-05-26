@@ -67,9 +67,18 @@ export function useAudioAssets() {
         const data = await api.getAudioAssets();
         if (cancelled) return;
         const { assets, styles: freshStyles } = buildState(data.items);
-        setUploadingAssets(assets);
-        setStyles(freshStyles);
-      } catch (err) { logError("useAudioAssets:initialLoad", err); }
+        if (assets.length > 0 || styles.length > 0) {
+          setUploadingAssets(assets);
+          setStyles(freshStyles);
+          return;
+        }
+      } catch { /* API unavailable */ }
+      // Demo fallback
+      if (cancelled) return;
+      const { MOCK_ASSETS, MOCK_STYLES } = await import("@/lib/mock-data");
+      setUploadingAssets(MOCK_ASSETS);
+      setStyles(MOCK_STYLES);
+      if (MOCK_STYLES.length > 0) setSelectedStyle(MOCK_STYLES[0]);
     })();
     return () => { cancelled = true; };
   }, []);

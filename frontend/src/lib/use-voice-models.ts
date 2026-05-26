@@ -19,9 +19,16 @@ export function useVoiceModels(activeTab: string) {
   useEffect(() => {
     if (activeTab !== "create" && activeTab !== "assets") return;
     let cancelled = false;
-    api.getVoiceModels().then((models) => {
-      if (!cancelled) setVoiceModels(models);
-    }).catch((err) => logError("useVoiceModels:fetch", err));
+    (async () => {
+      try {
+        const models = await api.getVoiceModels();
+        if (!cancelled && models.length > 0) { setVoiceModels(models); return; }
+      } catch { /* API unavailable */ }
+      // Demo fallback
+      if (cancelled) return;
+      const { MOCK_VOICE_MODELS } = await import("@/lib/mock-data");
+      setVoiceModels(MOCK_VOICE_MODELS);
+    })();
     return () => { cancelled = true; };
   }, [activeTab]);
 

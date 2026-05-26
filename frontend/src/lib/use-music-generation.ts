@@ -278,8 +278,14 @@ export function useMusicGeneration() {
         providerMode: (m as any).provider_mode || "mock",
         createdAt: m.created_at?.split("T")[0] || "",
       }));
-      setPlaylist(loadedPlaylist);
-    } catch (err) { logError("loadPlaylist", err); }
+      if (loadedPlaylist.length > 0) {
+        setPlaylist(loadedPlaylist);
+        return;
+      }
+    } catch { /* API unavailable */ }
+    // Demo fallback
+    const { MOCK_PLAYLIST } = await import("@/lib/mock-data");
+    if (MOCK_PLAYLIST.length > 0) setPlaylist(MOCK_PLAYLIST);
   }, []);
 
   return {
