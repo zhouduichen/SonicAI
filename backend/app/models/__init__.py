@@ -5,6 +5,7 @@ from app.models.generated_music import GeneratedMusic
 from app.models.voice_model import VoiceModel
 from app.models.vocal_generation import VocalGeneration
 from app.models.song import Song
+from app.models.job import Job
 from app.core.database import Base
 
-__all__ = ["User", "AudioAsset", "StyleVector", "GeneratedMusic", "VoiceModel", "VocalGeneration", "Song", "Base"]
+__all__ = ["User", "AudioAsset", "StyleVector", "GeneratedMusic", "VoiceModel", "VocalGeneration", "Song", "Job", "Base"]

@@ -5,7 +5,7 @@ import { Intersect, Plus, X, Lightning } from "@phosphor-icons/react";
 import type { StyleTag, ModelInfo } from "@/types";
 import ModelSelector from "./ModelSelector";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api/v1";
 
 interface BlendPanelProps {
   styles: StyleTag[];
@@ -38,6 +38,7 @@ export default function BlendPanel({
   const [weights, setWeights] = useState<number[]>([0.5, 0.5]);
   const [prompt, setPrompt] = useState("");
   const [presets, setPresets] = useState<BlendPreset[]>(FALLBACK_PRESETS);
+  const [hoveredPreset, setHoveredPreset] = useState<string | null>(null);
 
   useEffect(() => {
     fetch(`${API_BASE}/music/blend-presets`)
@@ -175,24 +176,67 @@ export default function BlendPanel({
 
         {/* Presets */}
         <div className="flex gap-2 flex-wrap">
-          {presets.map((p) => (
-            <button
-              key={p.key}
-              onClick={() => applyPreset(p)}
-              disabled={selectedStyles.length < p.num_styles}
-              className="px-2 py-1 text-[10px] font-mono rounded transition-all"
-              style={{
-                background: "var(--bg-tertiary)",
-                color: selectedStyles.length >= p.num_styles ? "var(--text-secondary)" : "var(--text-tertiary)",
-                border: "1px solid var(--border-color)",
-                opacity: selectedStyles.length >= p.num_styles ? 1 : 0.4,
-              }}
-            >
-              <Lightning size={9} className="inline mr-1" />
-              {p.name}
-            </button>
-          ))}
+          {presets.map((p) => {
+            const isDisabled = selectedStyles.length < p.num_styles;
+            return (
+              <button
+                key={p.key}
+                onClick={() => applyPreset(p)}
+                disabled={isDisabled}
+                onMouseEnter={() => setHoveredPreset(p.key)}
+                onMouseLeave={() => setHoveredPreset(null)}
+                className="px-2 py-1 text-[10px] font-mono rounded transition-all"
+                style={{
+                  background: hoveredPreset === p.key ? "var(--accent-soft)" : "var(--bg-tertiary)",
+                  color: isDisabled ? "var(--text-tertiary)" : hoveredPreset === p.key ? "var(--accent)" : "var(--text-secondary)",
+                  border: hoveredPreset === p.key ? "1px solid var(--accent)" : "1px solid var(--border-color)",
+                  opacity: isDisabled ? 0.4 : 1,
+                }}
+              >
+                <Lightning size={9} className="inline mr-1" />
+                {p.name}
+              </button>
+            );
+          })}
         </div>
+
+        {/* Preset hover preview */}
+        {hoveredPreset && (
+          <div
+            className="rounded-xl p-3 text-[10px] space-y-1.5 transition-all"
+            style={{
+              background: "var(--bg-primary)",
+              border: "1px solid var(--border-color)",
+            }}
+          >
+            {(() => {
+              const preset = presets.find((p) => p.key === hoveredPreset)!;
+              return (
+                <>
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono" style={{ color: "var(--text-primary)" }}>{preset.name}</span>
+                    <span style={{ color: "var(--text-tertiary)" }}>需要 {preset.num_styles} 个风格</span>
+                  </div>
+                  <p style={{ color: "var(--text-tertiary)" }}>{preset.description}</p>
+                  <div className="flex gap-1 flex-wrap pt-1">
+                    {preset.weights.map((w, i) => (
+                      <span
+                        key={i}
+                        className="px-2 py-0.5 rounded-full font-mono"
+                        style={{
+                          background: "var(--accent-soft)",
+                          color: "var(--accent)",
+                        }}
+                      >
+                        #{i + 1}: {Math.round(w * 100)}%
+                      </span>
+                    ))}
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        )}
 
         {/* Model + Prompt */}
         <div className="space-y-3">

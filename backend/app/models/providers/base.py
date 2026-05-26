@@ -7,8 +7,9 @@ class ModelProvider(ABC):
     """Base class for any AI model provider (local or API)."""
 
     @abstractmethod
-    def load(self, use_onnx: bool = False) -> None:
-        """Load the model into memory/VRAM. Set use_onnx=True for ONNX CPU path."""
+    def load(self, use_onnx: bool = False, force_mock: bool = False) -> None:
+        """Load the model into memory/VRAM. use_onnx=True for ONNX CPU path.
+        force_mock=True skips real model loading entirely (mock fallback only)."""
 
     @abstractmethod
     def unload(self) -> None:
@@ -40,8 +41,8 @@ class VocalSepProvider(ModelProvider):
     """Provider for vocal/accompaniment separation."""
 
     @abstractmethod
-    def separate(self, audio_path: str) -> str:
-        """Separate audio. Returns path to instrumental (no-vocals) file."""
+    def separate(self, audio_path: str, stem: str = "instrumental") -> str:
+        """Separate audio. stem='instrumental' returns accompaniment, stem='vocals' returns vocals."""
 
 
 class StyleExtractProvider(ModelProvider):
@@ -56,5 +57,6 @@ class MusicGenProvider(ModelProvider):
     """Provider for music generation from embeddings + text prompt."""
 
     @abstractmethod
-    def generate(self, embedding: list[float], text_prompt: str) -> dict:
-        """Generate music. Returns dict with 'file_path' and 'duration_seconds'."""
+    def generate(self, embedding: list[float], text_prompt: str, reference_audio_path: str | None = None) -> dict:
+        """Generate music. Returns dict with 'file_path' and 'duration_seconds'.
+        reference_audio_path is used for melody conditioning on musicgen-melody."""

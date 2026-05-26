@@ -92,7 +92,7 @@ class ResourceManager:
                 )
 
         logger.info(f"Loading {provider.model_key} (path={exec_path}, vram={vram}GB)")
-        provider.load(use_onnx=(exec_path == "onnx"))
+        provider.load(use_onnx=(exec_path == "onnx"), force_mock=(exec_path == "mock"))
         self._current = provider
 
     def release_all(self) -> None:

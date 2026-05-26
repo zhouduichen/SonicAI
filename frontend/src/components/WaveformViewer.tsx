@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect, useCallback } from "react";
+import { useRef, useEffect, useCallback, useState } from "react";
 
 interface WaveformViewerProps {
   analyserNode: AnalyserNode | null;
@@ -10,6 +10,17 @@ interface WaveformViewerProps {
   duration: number;
   onSeek: (time: number) => void;
 }
+
+const SKELETON_BARS = [
+  { height: "18px", opacity: 0.28 },
+  { height: "31px", opacity: 0.42 },
+  { height: "24px", opacity: 0.34 },
+  { height: "39px", opacity: 0.48 },
+  { height: "28px", opacity: 0.38 },
+  { height: "43px", opacity: 0.5 },
+  { height: "21px", opacity: 0.3 },
+  { height: "34px", opacity: 0.44 },
+];
 
 function getColor(canvas: HTMLCanvasElement, name: string, fallback: string): string {
   return getComputedStyle(canvas).getPropertyValue(name).trim() || fallback;
@@ -30,7 +41,6 @@ function drawWaveform(canvas: HTMLCanvasElement, analyser: AnalyserNode) {
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, width, height);
 
-  // Peak-based waveform per pixel column
   const samplesPerCol = Math.max(1, Math.floor(data.length / width));
   const len = width * samplesPerCol;
 
@@ -52,7 +62,6 @@ function drawWaveform(canvas: HTMLCanvasElement, analyser: AnalyserNode) {
     ctx.globalAlpha = 1;
   }
 
-  // Center line
   ctx.strokeStyle = accent + "1a";
   ctx.lineWidth = 0.5;
   ctx.beginPath();
@@ -75,7 +84,6 @@ function drawSpectrogram(canvas: HTMLCanvasElement, analyser: AnalyserNode) {
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, width, height);
 
-  // Logarithmic frequency scale — 64 bars emphasizing audible range
   const barCount = 64;
   const barW = Math.max(2, Math.floor(width / barCount) - 3);
   const gap = Math.max(1, (width - barCount * barW) / (barCount + 1));
@@ -102,7 +110,6 @@ function drawSpectrogram(canvas: HTMLCanvasElement, analyser: AnalyserNode) {
     ctx.fill();
   }
 
-  // Baseline
   ctx.strokeStyle = accent + "1a";
   ctx.lineWidth = 0.5;
   ctx.beginPath();
@@ -118,11 +125,31 @@ function drawPlayhead(canvas: HTMLCanvasElement, progress: number) {
   if (x === 0) return;
 
   ctx.strokeStyle = getColor(canvas, "--accent", "#d4a853");
-  ctx.lineWidth = 1;
+  ctx.lineWidth = 1.5;
   ctx.beginPath();
   ctx.moveTo(x, 0);
   ctx.lineTo(x, canvas.height);
   ctx.stroke();
+}
+
+function drawHoverIndicator(canvas: HTMLCanvasElement, hoverX: number) {
+  const ctx = canvas.getContext("2d");
+  if (!ctx || hoverX < 0) return;
+
+  ctx.strokeStyle = getColor(canvas, "--accent", "#d4a853") + "44";
+  ctx.lineWidth = 1;
+  ctx.setLineDash([3, 3]);
+  ctx.beginPath();
+  ctx.moveTo(hoverX, 0);
+  ctx.lineTo(hoverX, canvas.height);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+function formatTime(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
 export default function WaveformViewer({
@@ -131,6 +158,9 @@ export default function WaveformViewer({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef(0);
   const stateRef = useRef({ mode, isPlaying, progress: 0 });
+  const [hoverX, setHoverX] = useState(-1);
+  const [ripple, setRipple] = useState<{ x: number; time: number } | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   stateRef.current = {
     mode,
@@ -165,20 +195,45 @@ export default function WaveformViewer({
     if (!isPlaying) render();
   }, [mode, render, isPlaying]);
 
+  // Ripple animation
+  useEffect(() => {
+    if (!ripple) return;
+    const timeout = setTimeout(() => setRipple(null), 400);
+    return () => clearTimeout(timeout);
+  }, [ripple]);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setHoverX(e.clientX - rect.left);
+  }, []);
+
+  const handleMouseLeave = useCallback(() => {
+    setHoverX(-1);
+  }, []);
+
+  const handleClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!duration) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const seekTime = (x / rect.width) * duration;
+    onSeek(seekTime);
+    setRipple({ x, time: seekTime });
+  }, [duration, onSeek]);
+
   if (!analyserNode) {
     return (
       <div className="relative rounded-lg overflow-hidden" style={{ aspectRatio: "800/120" }}>
         <div className="skeleton w-full h-full" />
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="flex items-center gap-3">
-            {Array.from({ length: 8 }).map((_, i) => (
+            {SKELETON_BARS.map((bar, i) => (
               <div
                 key={i}
                 className="w-[3px] rounded-full animate-pulse"
                 style={{
-                  height: `${12 + Math.random() * 28}px`,
+                  height: bar.height,
                   background: "var(--text-tertiary)",
-                  opacity: 0.2 + Math.random() * 0.3,
+                  opacity: bar.opacity,
                 }}
               />
             ))}
@@ -188,25 +243,59 @@ export default function WaveformViewer({
     );
   }
 
+  const hoverTime = duration > 0 && hoverX > 0
+    ? (hoverX / (canvasRef.current?.width || 800)) * duration
+    : 0;
+
   return (
-    <canvas
-      ref={canvasRef}
-      aria-label={mode === "waveform" ? "波形可视化" : "频谱可视化"}
-      role="img"
-      width={800}
-      height={mode === "waveform" ? 120 : 160}
-      className="w-full cursor-pointer rounded-lg"
-      style={{
-        border: "1px solid var(--border-color)",
-        maxWidth: "100%",
-        height: "auto",
-        aspectRatio: mode === "waveform" ? "800/120" : "800/160",
-      }}
-      onClick={(e) => {
-        if (!duration) return;
-        const rect = e.currentTarget.getBoundingClientRect();
-        onSeek(((e.clientX - rect.left) / rect.width) * duration);
-      }}
-    />
+    <div ref={containerRef} className="relative">
+      <canvas
+        ref={canvasRef}
+        aria-label={mode === "waveform" ? "波形可视化" : "频谱可视化"}
+        role="img"
+        width={800}
+        height={mode === "waveform" ? 120 : 160}
+        className="w-full cursor-pointer rounded-lg"
+        style={{
+          border: "1px solid var(--border-color)",
+          maxWidth: "100%",
+          height: "auto",
+          aspectRatio: mode === "waveform" ? "800/120" : "800/160",
+        }}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={handleMouseLeave}
+        onClick={handleClick}
+      />
+
+      {/* Hover time tooltip */}
+      {hoverX >= 0 && duration > 0 && (
+        <div
+          className="absolute top-1 px-2 py-0.5 rounded text-[9px] font-mono pointer-events-none z-10"
+          style={{
+            left: Math.min(hoverX, (canvasRef.current?.width || 800) - 50),
+            background: "var(--bg-secondary)",
+            color: "var(--accent)",
+            border: "1px solid var(--accent)",
+            transform: "translateX(-50%)",
+          }}
+        >
+          {formatTime(hoverTime)}
+        </div>
+      )}
+
+      {/* Click ripple */}
+      {ripple && (
+        <div
+          className="absolute top-0 bottom-0 pointer-events-none"
+          style={{
+            left: ripple.x,
+            width: 2,
+            background: "var(--accent)",
+            opacity: 0.6,
+            transition: "opacity 0.4s ease",
+          }}
+        />
+      )}
+    </div>
   );
 }

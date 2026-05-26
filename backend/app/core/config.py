@@ -102,6 +102,10 @@ class Settings(BaseSettings):
     # Hardware tier
     SONICAI_HARDWARE_TIER: str = "ultra"
     SONICAI_PREFERENCE: str = "speed"
+    SONICAI_ALLOW_CPU_TRAINING: bool = False
+
+    # Admin — production must set DEFAULT_ADMIN_PASSWORD; dev defaults to admin123
+    DEFAULT_ADMIN_PASSWORD: str = ""
 
     # LLM / Prompt Suggestions
     OLLAMA_HOST: str = "http://localhost:11434"
@@ -110,6 +114,12 @@ class Settings(BaseSettings):
     OPENAI_BASE_URL: str = "https://api.openai.com"
     OPENAI_MODEL: str = "gpt-4o-mini"
     SUGGESTION_TIMEOUT_SECONDS: int = 45
+
+    # External SVS service (GPT-SoVITS / Bert-VITS2)
+    SVS_API_URL: str = ""
+
+    # Mock fallback control — set to False in production to prevent silent fake audio
+    ENABLE_MOCK_FALLBACK: bool = True
 
     class Config:
         env_file = ".env"

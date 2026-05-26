@@ -63,7 +63,7 @@ def downgrade() -> None:
     with op.batch_alter_table('voice_models') as batch_op:
         batch_op.drop_column('source_audio_ids')
         batch_op.add_column(sa.Column('source_audio_id', sa.INTEGER(), nullable=True))
-        batch_op.create_foreign_key(None, 'audio_assets', ['source_audio_id'], ['id'])
+        batch_op.create_foreign_key('fk_voice_models_audio_assets', 'audio_assets', ['source_audio_id'], ['id'])
 
     op.drop_column('generated_music', 'provider_mode')
     op.drop_index(op.f('ix_songs_user_id'), table_name='songs')

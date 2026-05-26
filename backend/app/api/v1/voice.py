@@ -1,5 +1,6 @@
 import os
 import logging
+import threading
 from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -14,7 +15,16 @@ from app.schemas.voice import (
     VocalGenerationStatusResponse,
 )
 from app.services import voice_service
-from app.tasks.voice_pipeline import train_voice_model, infer_rvc_vocals, infer_rvc_vocals_sync
+from app.tasks.celery_app import celery_app
+from app.tasks.voice_pipeline import (
+    train_voice_model,
+    run_voice_training_job,
+    infer_rvc_vocals,
+    infer_rvc_vocals_sync,
+    _cpu_training_allowed,
+    _cuda_status,
+)
+from app.services.job_service import create_job, update_job_status
 
 router = APIRouter(prefix="/voice", tags=["voice"])
 logger = logging.getLogger(__name__)
@@ -22,8 +32,40 @@ logger = logging.getLogger(__name__)
 from app.services.voice_service import EPOCH_TARGETS, TIER_MILESTONES
 
 
+def _ensure_voice_training_ready(processing_mode: str = "auto"):
+    """Check CUDA availability; only check Celery when mode requires it."""
+    cuda_ok, cuda_diag = _cuda_status()
+    if not cuda_ok and not _cpu_training_allowed():
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "CUDA is unavailable, so CPU voice training was blocked to avoid huge ETAs. "
+                f"Current runtime: {cuda_diag}. Re-run install.bat and start with python start_all.py --async."
+            ),
+        )
+
+    if processing_mode == "async":
+        try:
+            stats = celery_app.control.inspect(timeout=2).stats()
+        except Exception as e:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Voice training worker is unavailable: {e}. Start with python start_all.py --async.",
+            ) from e
+        if not stats:
+            raise HTTPException(
+                status_code=503,
+                detail="Voice training worker is not responding. Start with python start_all.py --async.",
+            )
+
+
 @router.post("/train", response_model=TrainVoiceResponse)
-def train(request: TrainVoiceRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def train(
+    request: TrainVoiceRequest,
+    processing_mode: Literal["sync", "async", "auto"] = Query("auto"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     if not request.audio_asset_ids:
         raise HTTPException(status_code=400, detail="至少需要选择一个音频文件")
 
@@ -38,24 +80,55 @@ def train(request: TrainVoiceRequest, db: Session = Depends(get_db), user: User 
             raise HTTPException(status_code=400, detail=f"音频 {asset.file_name} 尚未处理完成")
         assets.append(asset)
 
+    _ensure_voice_training_ready(processing_mode)
+
     model = voice_service.create_voice_model(
         db, user.id, request.name, request.audio_asset_ids, request.quality_target
     )
 
-    # Run training in background thread (no Celery/Redis needed)
-    import threading
     audio_paths = [a.file_path for a in assets]
-    quality_target = request.quality_target
-    model_id = model.id
+    job = create_job(db, user, "voice_training", {
+        "model_id": model.id,
+        "audio_paths": audio_paths,
+        "quality_target": request.quality_target,
+    })
 
-    def _train_in_thread():
-        from app.tasks.voice_pipeline import train_voice_model_sync
-        train_voice_model_sync(model_id, audio_paths, quality_target)
+    # Dispatch: async → Celery only; sync → background thread;
+    # auto → skip Redis check, go directly to background thread
+    # (the celery-broker port check is unreliable — a stale process on 6379
+    # falsely signals Redis-is-alive, then the task queues but never runs).
+    if processing_mode == "async":
+        try:
+            stats = celery_app.control.inspect(timeout=2).stats()
+            if not stats:
+                raise RuntimeError("Celery worker not responding")
+        except Exception as e:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Voice training worker is unavailable: {e}. Start with python start_all.py --async.",
+            ) from e
+        try:
+            task = train_voice_model.delay(job_id=job.id)
+            job.celery_task_id = task.id
+            db.commit()
+            logger.info(f"Async training dispatched: model_id={model.id} celery_task={task.id}")
+            return TrainVoiceResponse(model_id=model.id, job_id=job.id, status="preprocessing")
+        except Exception as e:
+            raise HTTPException(
+                status_code=503,
+                detail=f"后台任务队列不可用 (Redis/Celery 未启动): {e}",
+            ) from e
 
-    t = threading.Thread(target=_train_in_thread, daemon=True)
+    # Sync or auto → background thread, no dependency on Redis/Celery at all
+    logger.info(f"Sync training: model_id={model.id} quality={request.quality_target}")
+    t = threading.Thread(
+        target=run_voice_training_job,
+        args=(model.id, audio_paths, request.quality_target, job.id),
+        daemon=True,
+    )
     t.start()
-
-    return TrainVoiceResponse(model_id=model.id, status="preprocessing")
+    db.commit()
+    return TrainVoiceResponse(model_id=model.id, job_id=job.id, status="preprocessing")
 
 
 @router.get("/status/{model_id}", response_model=VoiceModelStatus)
@@ -125,6 +198,11 @@ def sing(
         raise HTTPException(status_code=400, detail="参考音频文件不存在")
 
     gen = voice_service.create_vocal_generation(db, user.id, request.voice_model_id, request.reference_audio_id)
+    job = create_job(db, user, "svs_generation", {
+        "generation_id": gen.id,
+        "voice_model_id": request.voice_model_id,
+        "reference_audio_id": request.reference_audio_id,
+    })
 
     if processing_mode == "sync":
         try:
@@ -133,12 +211,15 @@ def sing(
                 voice_model_id=model.id,
                 reference_audio_path=ref_audio.file_path,
             )
+            update_job_status(db, job, "completed", stage="completed", progress=100)
             return SingResponse(
                 generation_id=gen.id,
+                job_id=job.id,
                 status=result.get("stage", "completed"),
                 message="人声生成完成" if result.get("stage") == "completed" else "人声生成失败",
             )
         except Exception as e:
+            update_job_status(db, job, "failed", stage="inference", error_message=str(e))
             raise HTTPException(status_code=500, detail=f"人声生成失败: {e}") from e
     elif processing_mode == "async":
         try:
@@ -147,35 +228,39 @@ def sing(
                 voice_model_id=model.id,
                 reference_audio_path=ref_audio.file_path,
             )
-            return SingResponse(generation_id=gen.id, status="pending")
+            return SingResponse(generation_id=gen.id, job_id=job.id, status="pending")
         except Exception as e:
             raise HTTPException(
                 status_code=503,
                 detail=f"后台队列不可用 (Redis/Celery 未启动): {e}",
             ) from e
     else:
-        # "auto": try async first, fall back to sync in background thread
+        # "auto": try async first, fall back to sync
         try:
             infer_rvc_vocals.delay(
                 generation_id=gen.id,
                 voice_model_id=model.id,
                 reference_audio_path=ref_audio.file_path,
             )
-            return SingResponse(generation_id=gen.id, status="pending")
+            return SingResponse(generation_id=gen.id, job_id=job.id, status="pending")
         except Exception as e:
-            logger.warning(f"Celery unavailable ({e}), running RVC inference in background thread")
-            import threading
-            t = threading.Thread(
-                target=infer_rvc_vocals_sync,
-                kwargs={
-                    "generation_id": gen.id,
-                    "voice_model_id": model.id,
-                    "reference_audio_path": ref_audio.file_path,
-                },
-                daemon=True,
-            )
-            t.start()
-            return SingResponse(generation_id=gen.id, status="processing")
+            logger.warning(f"Celery unavailable ({e}), running RVC inference synchronously")
+            try:
+                result = infer_rvc_vocals_sync(
+                    generation_id=gen.id,
+                    voice_model_id=model.id,
+                    reference_audio_path=ref_audio.file_path,
+                )
+                update_job_status(db, job, "completed", stage="completed", progress=100)
+                return SingResponse(
+                    generation_id=gen.id,
+                    job_id=job.id,
+                    status=result.get("stage", "completed"),
+                    message="人声生成完成" if result.get("stage") == "completed" else "人声生成失败",
+                )
+            except Exception as sync_e:
+                update_job_status(db, job, "failed", stage="inference", error_message=str(sync_e))
+                raise HTTPException(status_code=500, detail=f"人声生成失败: {sync_e}") from sync_e
 
 
 @router.get("/generations", response_model=VocalGenerationListResponse)

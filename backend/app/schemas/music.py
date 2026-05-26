@@ -10,6 +10,7 @@ class GenerateRequest(BaseModel):
 
 class GenerateResponse(BaseModel):
     task_id: str
+    job_id: int | None = None
     message: str = "Music generation started"
     music_gen_model: str = "musicgen_small"
 

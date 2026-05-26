@@ -1,8 +1,14 @@
 "use client";
 
 function rng(seed: number) {
-  const x = Math.sin(seed * 127.1 + 311.7) * 43758.5453;
-  return x - Math.floor(x);
+  let value = (seed + 0x6d2b79f5) | 0;
+  value = Math.imul(value ^ (value >>> 15), value | 1);
+  value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+  return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+}
+
+function cssNumber(value: number) {
+  return Number(value.toFixed(3)).toString();
 }
 
 const TOTAL = 180;
@@ -70,16 +76,16 @@ export default function MassiveWaveBackground() {
           key={i}
           className="absolute rounded-full"
           style={{
-            left: `${d.x}%`,
-            top: `${d.y}%`,
-            width: d.size,
-            height: d.size,
+            left: `${cssNumber(d.x)}%`,
+            top: `${cssNumber(d.y)}%`,
+            width: `${cssNumber(d.size)}px`,
+            height: `${cssNumber(d.size)}px`,
             background: d.glow > 0 ? "var(--accent-glow)" : "var(--accent)",
             opacity: d.glow > 0 ? 0.5 : 0.15,
-            boxShadow: d.glow > 0 ? `0 0 ${d.glow}px rgba(232,194,103,0.5), 0 0 ${d.glow * 2}px rgba(212,168,83,0.2)` : "none",
-            "--dx": `${d.driftX}px`,
-            "--dy": `${d.driftY}px`,
-            animation: `particle-drift ${d.speed}s ease-in-out ${d.delay}s infinite`,
+            boxShadow: d.glow > 0 ? `0 0 ${cssNumber(d.glow)}px rgba(232,194,103,0.5), 0 0 ${cssNumber(d.glow * 2)}px rgba(212,168,83,0.2)` : "none",
+            "--dx": `${cssNumber(d.driftX)}px`,
+            "--dy": `${cssNumber(d.driftY)}px`,
+            animation: `particle-drift ${cssNumber(d.speed)}s ease-in-out ${cssNumber(d.delay)}s infinite`,
             willChange: d.glow > 6 ? "transform, opacity" : "auto",
           } as React.CSSProperties}
         />

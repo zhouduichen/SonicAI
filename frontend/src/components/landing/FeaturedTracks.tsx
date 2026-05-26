@@ -6,7 +6,7 @@ import { motion } from "framer-motion";
 import Link from "next/link";
 import type { GeneratedMusic } from "@/types";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api/v1";
 
 const COVER_GRADIENTS = [
   "linear-gradient(135deg, #2a1d10 0%, #4a3828 50%, #1a1410 100%)",
@@ -16,6 +16,19 @@ const COVER_GRADIENTS = [
   "linear-gradient(135deg, #141a28 0%, #202a40 50%, #0e1218 100%)",
   "linear-gradient(135deg, #241018 0%, #3a2030 50%, #160e12 100%)",
 ];
+
+function seededUnit(seed: number) {
+  let value = (seed + 0x6d2b79f5) | 0;
+  value = Math.imul(value ^ (value >>> 15), value | 1);
+  value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+  return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+}
+
+const EQ_BARS = Array.from({ length: 24 }, (_, i) => ({
+  height: `${(4 + seededUnit(i + 1) * 28).toFixed(2)}px`,
+  duration: `${(0.3 + seededUnit(i + 101) * 0.5).toFixed(2)}s`,
+  delay: `${(seededUnit(i + 201) * 0.3).toFixed(2)}s`,
+}));
 
 const SOUNDHELIX_FALLBACKS: GeneratedMusic[] = [
   { id: "f1", title: "深夜 Lo-Fi 漫步", prompt: "适合深夜开车的 Lo-Fi 音乐", styleName: "Lo-Fi 电音", filePath: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3", duration: 182, createdAt: "2026-05-19" },
@@ -30,8 +43,7 @@ function resolveAudioUrl(track: GeneratedMusic): string {
   const fp = track.filePath;
   if (!fp) return "";
   if (fp.startsWith("http://") || fp.startsWith("https://") || fp.startsWith("blob:")) return fp;
-  if (fp.startsWith("/")) return fp;
-  return `${API_BASE}/music/${track.id}/download`;
+  return `${API_BASE}/music/public/${track.id}/download`;
 }
 
 async function fetchFeaturedTracks(): Promise<GeneratedMusic[]> {
@@ -157,12 +169,12 @@ export default function FeaturedTracks() {
                   {/* Playing EQ bars overlay */}
                   {isPlaying && (
                     <div className="absolute bottom-4 left-4 right-4 flex items-end justify-center gap-[1px] h-8">
-                      {Array.from({ length: 24 }).map((_, j) => (
+                      {EQ_BARS.map((bar, j) => (
                         <div key={j} className="flex-1 rounded-full"
                           style={{
-                            height: `${4 + Math.random() * 28}px`,
+                            height: bar.height,
                             background: "var(--accent)",
-                            animation: `eq-pulse ${0.3 + Math.random() * 0.5}s ease-in-out ${Math.random() * 0.3}s infinite`,
+                            animation: `eq-pulse ${bar.duration} ease-in-out ${bar.delay} infinite`,
                           }} />
                       ))}
                     </div>

@@ -603,3 +603,308 @@
 .model-setting-row:last-child {
   border-bottom: none;
 }
+
+/* ── Stage Progress (generation/processing timeline) ── */
+.stage-progress {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.stage-progress .stage-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-tertiary);
+  opacity: 0.3;
+  transition: all 0.5s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.stage-progress .stage-dot.active {
+  background: var(--accent);
+  opacity: 1;
+  box-shadow: 0 0 8px rgba(212, 168, 83, 0.5);
+}
+
+.stage-progress .stage-dot.done {
+  background: #22c55e;
+  opacity: 0.8;
+}
+
+.stage-progress .stage-line {
+  flex: 1;
+  height: 1px;
+  max-width: 40px;
+  background: var(--border-color);
+  transition: background 0.5s ease;
+}
+
+.stage-progress .stage-line.done {
+  background: var(--accent);
+  opacity: 0.4;
+}
+
+.stage-label {
+  font-size: 9px;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  transition: color 0.4s ease;
+}
+
+.stage-label.active {
+  color: var(--accent);
+}
+
+.stage-label.done {
+  color: #22c55e;
+}
+
+/* ── Training Stage Pipeline ── */
+.training-stage {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.training-stage .stage-node {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 9px;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  background: transparent;
+  transition: all 0.4s ease;
+}
+
+.training-stage .stage-node.active {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.training-stage .stage-node.done {
+  color: #22c55e;
+}
+
+.training-stage .stage-node.failed {
+  color: #ef4444;
+}
+
+.training-stage .stage-arrow {
+  width: 16px;
+  height: 1px;
+  background: var(--border-color);
+  margin: 0 2px;
+}
+
+.training-stage .stage-arrow.done {
+  background: var(--accent);
+  opacity: 0.4;
+}
+
+/* ── Status Badge ── */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 9px;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 500;
+}
+
+.status-badge.completed {
+  background: rgba(34, 197, 94, 0.12);
+  color: #22c55e;
+  border: 1px solid rgba(34, 197, 94, 0.2);
+}
+
+.status-badge.processing {
+  background: rgba(232, 168, 64, 0.12);
+  color: #e8a840;
+  border: 1px solid rgba(232, 168, 64, 0.2);
+}
+
+.status-badge.failed {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.status-badge.pending {
+  background: rgba(102, 102, 102, 0.12);
+  color: var(--text-tertiary);
+  border: 1px solid var(--border-color);
+}
+
+/* ── Asset Row ── */
+.asset-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  transition: background 0.25s ease;
+}
+
+.asset-row:hover {
+  background: var(--bg-hover);
+}
+
+/* ── Workspace Section Header ── */
+.workspace-section-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.workspace-section-header .section-icon {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  transform: rotate(45deg);
+}
+
+.workspace-section-header .section-icon > * {
+  transform: rotate(-45deg);
+}
+
+.workspace-section-header .section-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+/* ── Generation Timeline ── */
+.gen-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 0;
+}
+
+.gen-timeline .timeline-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.gen-timeline .timeline-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.gen-timeline .timeline-dot.active {
+  background: var(--accent);
+  animation: dot-breathe 1.2s ease-in-out infinite;
+}
+
+.gen-timeline .timeline-dot.done {
+  background: #22c55e;
+}
+
+.gen-timeline .timeline-label {
+  font-size: 10px;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.05em;
+  color: var(--text-tertiary);
+}
+
+.gen-timeline .timeline-label.active {
+  color: var(--accent);
+}
+
+.gen-timeline .timeline-label.done {
+  color: #22c55e;
+}
+
+@keyframes dot-breathe {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.3; transform: scale(1.8); }
+}
+
+/* ── Toast Animations ── */
+@keyframes toast-slide-in {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes toast-slide-out {
+  from { transform: translateX(0); opacity: 1; }
+  to { transform: translateX(100%); opacity: 0; }
+}
+
+@keyframes toast-timer {
+  from { width: 100%; }
+  to { width: 0%; }
+}
+
+.animate-slide-in {
+  animation: toast-slide-in 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.animate-slide-out {
+  animation: toast-slide-out 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-toast-timer {
+  animation: toast-timer 4s linear forwards;
+}
+
+/* ── Inspiration Chip ── */
+.inspiration-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 9999px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.32, 0.72, 0, 1);
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  white-space: nowrap;
+}
+
+.inspiration-chip:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* ── Style Detail Tag ── */
+.style-detail-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 8px;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.05em;
+  color: var(--text-tertiary);
+  background: var(--bg-tertiary);
+  white-space: nowrap;
+}

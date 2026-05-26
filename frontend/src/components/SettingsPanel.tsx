@@ -11,43 +11,25 @@ interface BackendState {
   managed: boolean;
 }
 
-const API_BASE_SVC = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
-
-function ServiceStatus({ processingMode, onProcessingModeChange }: { processingMode: ProcessingMode; onProcessingModeChange: (mode: ProcessingMode) => void }) {
+function ServiceStatus() {
   const [backend, setBackend] = useState<BackendState | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [svcStatus, setSvcStatus] = useState<{ redis: boolean; celery: boolean; celeryMsg: string }>({ redis: false, celery: false, celeryMsg: "" });
 
   useEffect(() => {
     let cancelled = false;
     const poll = async () => {
-      // Check Next.js managed backend
       try {
         const res = await fetch("/api/services");
-        if (res.ok) {
-          const data = await res.json();
-          if (!cancelled) { setBackend(data.backend ?? null); setError(null); }
-        }
-      } catch { /* Next.js route may be unavailable */ }
-
-      // Check backend service status (Redis/Celery)
-      try {
-        const svcRes = await fetch(`${API_BASE_SVC}/config/services`);
-        if (svcRes.ok) {
-          const svc = await svcRes.json();
-          if (!cancelled) {
-            setSvcStatus({
-              redis: svc.redis?.running ?? false,
-              celery: svc.celery?.running ?? false,
-              celeryMsg: svc.celery?.message || "",
-            });
-          }
-        }
-      } catch { /* backend may not be running */ }
+        if (!res.ok) throw new Error("offline");
+        const data = await res.json();
+        if (!cancelled) { setBackend(data.backend ?? null); setError(null); }
+      } catch {
+        if (!cancelled) setError("无法连接到服务管理接口");
+      }
     };
     poll();
-    const i = setInterval(poll, 5000);
+    const i = setInterval(poll, 3000);
     return () => { cancelled = true; clearInterval(i); };
   }, []);
 
@@ -75,80 +57,64 @@ function ServiceStatus({ processingMode, onProcessingModeChange }: { processingM
   };
 
   const running = backend?.running ?? false;
-  const asyncAvailable = svcStatus.redis && svcStatus.celery;
 
   return (
     <div>
       <p className="text-[10px] font-mono tracking-[0.15em] uppercase mb-2" style={{ color: "var(--text-tertiary)" }}>
         服务状态
       </p>
-      <div className="card-outer" style={{ borderRadius: "var(--radius-outer)" }}>
-        <div className="card-inner space-y-0" style={{ padding: "8px 14px" }}>
-          {/* Backend */}
-          <div className="flex items-center justify-between py-2" style={{ borderBottom: "1px solid var(--border-color)" }}>
-            <div className="flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full"
-                style={{ background: running ? "#22c55e" : "#666", boxShadow: running ? "0 0 6px rgba(34,197,94,0.5)" : "none" }}
-              />
-              <span className="text-xs" style={{ color: running ? "var(--text-primary)" : "var(--text-tertiary)" }}>
-                Backend{backend ? ` :${backend.port}` : ""}
-              </span>
-            </div>
-            <span className="text-[9px]" style={{ color: running ? "#22c55e" : "#666" }}>{running ? "运行中" : "未启动"}</span>
-          </div>
-          {/* Redis */}
-          <div className="flex items-center justify-between py-2" style={{ borderBottom: "1px solid var(--border-color)" }}>
-            <div className="flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full"
-                style={{ background: svcStatus.redis ? "#22c55e" : "#666", boxShadow: svcStatus.redis ? "0 0 6px rgba(34,197,94,0.5)" : "none" }}
-              />
-              <span className="text-xs" style={{ color: svcStatus.redis ? "var(--text-primary)" : "var(--text-tertiary)" }}>Redis</span>
-            </div>
-            <span className="text-[9px]" style={{ color: svcStatus.redis ? "#22c55e" : "#666" }}>{svcStatus.redis ? "运行中" : "未启动"}</span>
-          </div>
-          {/* Celery */}
-          <div className="flex items-center justify-between py-2">
-            <div className="flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full"
-                style={{ background: svcStatus.celery ? "#22c55e" : "#666", boxShadow: svcStatus.celery ? "0 0 6px rgba(34,197,94,0.5)" : "none" }}
-              />
-              <span className="text-xs" style={{ color: svcStatus.celery ? "var(--text-primary)" : "var(--text-tertiary)" }}>Celery</span>
-            </div>
-            <span className="text-[9px]" style={{ color: svcStatus.celery ? "#22c55e" : "#666" }}>{svcStatus.celery ? svcStatus.celeryMsg : "未启动"}</span>
-          </div>
+      {!backend ? (
+        <div className="text-xs space-y-1" style={{ color: "var(--text-tertiary)" }}>
+          <p>无法获取服务状态</p>
+          <p className="opacity-60">同步模式下只需后端+前端，无需其他服务</p>
         </div>
-      </div>
-
-      {/* Async mode warning */}
-      {!asyncAvailable && (
-        <div className="mt-2 p-2 rounded-lg" style={{ background: "rgba(232,168,64,0.1)", border: "1px solid rgba(232,168,64,0.2)" }}>
-          <p className="text-[10px]" style={{ color: "#e8a840" }}>
-            后台模式不可用 — 需要 Redis + Celery Worker 运行中
-          </p>
-          <p className="text-[9px] mt-0.5 opacity-70" style={{ color: "#e8a840" }}>
-            请启动 Redis 和 Celery Worker，或切换到同步/自动模式
-          </p>
+      ) : (
+        <div className="card-outer" style={{ borderRadius: "var(--radius-outer)" }}>
+          <div className="card-inner space-y-0" style={{ padding: "8px 14px" }}>
+            <div className="flex items-center justify-between py-2">
+              <div className="flex items-center gap-2">
+                <span
+                  className="w-1.5 h-1.5 rounded-full"
+                  style={{
+                    background: running ? "#22c55e" : "#666",
+                    boxShadow: running ? "0 0 6px rgba(34,197,94,0.5)" : "none",
+                  }}
+                />
+                <div>
+                  <span className="text-xs" style={{ color: running ? "var(--text-primary)" : "var(--text-tertiary)" }}>
+                    Backend API
+                  </span>
+                  <span className="text-[9px] font-mono ml-2" style={{ color: "var(--text-tertiary)" }}>
+                    Port {backend.port}
+                  </span>
+                </div>
+              </div>
+              <button
+                className="text-[9px] font-mono px-3 py-1 rounded-full"
+                style={{
+                  background: running ? "var(--bg-tertiary)" : "var(--accent)",
+                  color: running ? "var(--text-secondary)" : "#0d0d0d",
+                  opacity: busy ? 0.5 : 1,
+                  cursor: busy ? "not-allowed" : "pointer",
+                  border: "none",
+                }}
+                disabled={busy}
+                onClick={() => call(running ? "stop" : "start")}
+              >
+                {busy ? "..." : running ? "Stop" : "Start"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
-
       {error && (
-        <p className="text-[10px] mt-1.5" style={{ color: "#e8a840" }}>{error}</p>
+        <p className="text-[10px] mt-1.5" style={{ color: "#e8a840" }}>
+          {error}
+        </p>
       )}
-
-      <button
-        className="text-[9px] font-mono px-3 py-1 rounded-full mt-2"
-        style={{
-          background: running ? "var(--bg-tertiary)" : "var(--accent)",
-          color: running ? "var(--text-secondary)" : "#0d0d0d",
-          opacity: busy ? 0.5 : 1,
-          cursor: busy ? "not-allowed" : "pointer",
-          border: "none",
-        }}
-        disabled={busy}
-        onClick={() => call(running ? "stop" : "start")}
-      >
-        {busy ? "..." : running ? "Stop Backend" : "Start Backend"}
-      </button>
+      <p className="text-[9px] mt-1.5 opacity-50" style={{ color: "var(--text-tertiary)" }}>
+        同步模式：后端 + 前端即可；异步模式另需 Redis + Celery
+      </p>
     </div>
   );
 }
@@ -420,7 +386,7 @@ export default function SettingsPanel({
           </div>
 
           {/* Service Status */}
-          <ServiceStatus processingMode={processingMode} onProcessingModeChange={onProcessingModeChange} />
+          <ServiceStatus />
         </div>
 
         {/* Save Button */}

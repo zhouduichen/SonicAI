@@ -14,6 +14,7 @@ class SongCreateRequest(BaseModel):
 class SongCreateResponse(BaseModel):
     model_config = ConfigDict(protected_namespaces=())
     song_id: int
+    job_id: int | None = None
     status: str = "writing"
 
 
@@ -23,11 +24,14 @@ class SongStatusResponse(BaseModel):
     status: str
     lyrics: str
     instrumental_path: str
+    raw_vocal_path: str = ""
     vocal_path: str
+    converted_vocal_path: str = ""
     mixed_path: str
     error_message: str = ""
     lyrics_provider: str = ""
     instrumental_provider: str = ""
+    svs_provider: str = ""
     vocal_provider: str = ""
     has_vocals: bool = False
     created_at: datetime

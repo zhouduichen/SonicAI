@@ -5,6 +5,7 @@ from datetime import datetime
 class UploadResponse(BaseModel):
     asset_id: int
     task_id: str
+    job_id: int | None = None
     message: str = "Audio uploaded, processing started"
     vocal_sep_model: str = "demucs_htdemucs"
     style_extract_model: str = "clap_laion"
@@ -53,3 +54,4 @@ class StatusResponse(BaseModel):
     title: str | None = None
     duration_seconds: int | None = None
     music_gen_model: str | None = None
+    provider_mode: str | None = None

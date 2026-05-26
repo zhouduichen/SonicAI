@@ -14,6 +14,7 @@ class BlendGenerateRequest(BaseModel):
 
 class BlendGenerateResponse(BaseModel):
     task_id: str
+    job_id: int | None = None
     message: str = "Blend generation started"
     music_gen_model: str = "musicgen_small"
     num_blends: int

@@ -18,6 +18,7 @@ from app.schemas.blend import BlendGenerateRequest, BlendGenerateResponse, BLEND
 from app.schemas.batch import BatchGenerateRequest, BatchGenerateResponse, BatchStatusResponse, BatchTaskInfo, BatchCellInfo
 from app.schemas.audio import StatusResponse
 from app.services.music_service import list_user_music
+from app.services.job_service import create_job, update_job_status
 from app.tasks.audio_pipeline import process_music_generation, process_blend_generation, process_batch_generation
 from app.tasks.celery_app import celery_app
 
@@ -28,25 +29,62 @@ router = APIRouter(prefix="/music", tags=["music"])
 limiter = Limiter(key_func=get_remote_address)
 
 
+def _update_job_celery(db, job_id: int, celery_task_id: str):
+    """Associate a Celery task ID with a persistent Job."""
+    from app.models.job import Job
+    try:
+        job = db.query(Job).filter(Job.id == job_id).first()
+        if job:
+            job.celery_task_id = celery_task_id
+            update_job_status(db, job, "queued", stage="pending")
+            db.commit()
+    except Exception as e:
+        logger.warning(f"Failed to set celery_task_id for job {job_id}: {e}")
+
+
 def _sync_generate_music(
     embedding_json: str,
     text_prompt: str,
     vector_id: int,
     user_id: int,
     music_gen_model: str,
+    job_id: int | None = None,
+    db: Session | None = None,
 ) -> dict:
     """Run music generation synchronously (no Celery needed)."""
     from app.core.database import SessionLocal
     from app.models.generated_music import GeneratedMusic
+    from app.models.job import Job
     from app.tasks.audio_pipeline import _generate_music
     from app.models.providers.resource_manager import resource_manager
     import json as _json
 
+    def _update_j(st, *, stage=None, progress=None, error=None, result=None):
+        if job_id is None:
+            return
+        try:
+            if db is not None:
+                job = db.query(Job).filter(Job.id == job_id).first()
+                if job:
+                    update_job_status(db, job, st, stage=stage, progress=progress, error_message=error, result=result)
+                return
+
+            jdb = SessionLocal()
+            try:
+                job = jdb.query(Job).filter(Job.id == job_id).first()
+                if job:
+                    update_job_status(jdb, job, st, stage=stage, progress=progress, error_message=error, result=result)
+            finally:
+                jdb.close()
+        except Exception as e:
+            logging.getLogger(__name__).warning(f"Failed to update job {job_id}: {e}")
+
+    _update_j("running", stage="generating", progress=5)
     try:
         embedding = _json.loads(embedding_json)
         result = _generate_music(embedding, text_prompt, task_id="", model=music_gen_model)
 
-        db = SessionLocal()
+        music_db = db or SessionLocal()
         try:
             music = GeneratedMusic(
                 user_id=user_id, vector_id=vector_id,
@@ -56,21 +94,28 @@ def _sync_generate_music(
                 music_gen_model=music_gen_model,
                 provider_mode=result.get("provider_mode", "mock"),
             )
-            db.add(music)
-            db.commit()
-            db.refresh(music)
+            music_db.add(music)
+            music_db.commit()
+            music_db.refresh(music)
 
-            return {
+            payload = {
                 "stage": "completed",
                 "music_id": music.id,
                 "file_path": music.file_path,
                 "title": music.title,
+                "prompt": text_prompt,
                 "duration_seconds": music.duration_seconds,
                 "music_gen_model": music_gen_model,
                 "provider_mode": music.provider_mode,
             }
+            _update_j("completed", stage="completed", progress=100, result=payload)
+            return payload
         finally:
-            db.close()
+            if db is None:
+                music_db.close()
+    except Exception as e:
+        _update_j("failed", stage="generating", error=str(e))
+        raise
     finally:
         resource_manager.release_all()
 
@@ -80,7 +125,7 @@ def _sync_generate_music(
 def generate(
     request: Request,
     body: GenerateRequest,
-    processing_mode: Literal["sync", "async", "auto"] = Query("sync"),
+    processing_mode: Literal["sync", "async", "auto"] = Query("auto"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -101,9 +146,17 @@ def generate(
 
     from app.api.v1.audio import _store_sync_result
 
+    # Create a persistent Job
+    job = create_job(db, user, "music_generation", {
+        "style_vector_id": body.style_vector_id,
+        "text_prompt": body.text_prompt,
+        "music_gen_model": body.music_gen_model,
+    })
+
     if processing_mode == "sync":
         result = _sync_generate_music(
             vector.embedding, body.text_prompt, vector.id, user.id, body.music_gen_model,
+            job_id=job.id, db=db,
         )
         task_id = f"sync-{result.get('music_id', 'unknown')}"
         _store_sync_result(task_id, result)
@@ -114,6 +167,7 @@ def generate(
                 vector_id=vector.id, user_id=user.id, music_gen_model=body.music_gen_model,
             )
             task_id = task.id
+            _update_job_celery(db, job.id, task.id)
         except Exception as e:
             raise HTTPException(status_code=503, detail=f"后台队列不可用 (Redis/Celery 未启动): {e}")
     else:
@@ -125,15 +179,17 @@ def generate(
                 vector_id=vector.id, user_id=user.id, music_gen_model=body.music_gen_model,
             )
             task_id = task.id
+            _update_job_celery(db, job.id, task.id)
         except Exception as e:
             logger.warning(f"Celery unavailable ({e}), generating music synchronously")
             result = _sync_generate_music(
                 vector.embedding, body.text_prompt, vector.id, user.id, body.music_gen_model,
+                job_id=job.id, db=db,
             )
             task_id = f"sync-{result.get('music_id', 'unknown')}"
             _store_sync_result(task_id, result)
 
-    return GenerateResponse(task_id=task_id, music_gen_model=body.music_gen_model)
+    return GenerateResponse(task_id=task_id, job_id=job.id, music_gen_model=body.music_gen_model)
 
 
 @router.get("/list", response_model=MusicListResponse)
@@ -148,7 +204,7 @@ def list_music(
     total = db.query(GeneratedMusic).filter(GeneratedMusic.user_id == user.id).count()
 
     return MusicListResponse(
-        items=[MusicResponse(**{**item, "music_gen_model": item.get("music_gen_model", "musicgen_small"), "provider_mode": item.get("provider_mode", "mock")}) for item in items],
+        items=[MusicResponse(**item) for item in items],
         total=total,
     )
 
@@ -158,7 +214,7 @@ def list_music(
 def blend_generate(
     request: Request,
     body: BlendGenerateRequest,
-    processing_mode: Literal["sync", "async", "auto"] = Query("sync"),
+    processing_mode: Literal["sync", "async", "auto"] = Query("auto"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -184,9 +240,16 @@ def blend_generate(
     from app.api.v1.audio import _store_sync_result
     from app.tasks.audio_pipeline import _blend_embeddings
 
+    # Create a persistent Job
+    job = create_job(db, user, "music_generation", {
+        "blend": [{"style_vector_id": b.style_vector_id, "weight": b.weight} for b in body.blends],
+        "text_prompt": body.text_prompt,
+        "music_gen_model": body.music_gen_model,
+    })
+
     if processing_mode == "sync":
         blended = _blend_embeddings(embeddings)
-        result = _sync_generate_music(json.dumps(blended), body.text_prompt, 0, user.id, body.music_gen_model)
+        result = _sync_generate_music(json.dumps(blended), body.text_prompt, 0, user.id, body.music_gen_model, job_id=job.id, db=db)
         task_id = f"sync-{result.get('music_id', 'blend')}"
         _store_sync_result(task_id, result)
     elif processing_mode == "async":
@@ -196,6 +259,7 @@ def blend_generate(
                 user_id=user.id, music_gen_model=body.music_gen_model,
             )
             task_id = task.id
+            _update_job_celery(db, job.id, task.id)
         except Exception as e:
             raise HTTPException(status_code=503, detail=f"后台队列不可用 (Redis/Celery 未启动): {e}")
     else:
@@ -205,15 +269,16 @@ def blend_generate(
                 user_id=user.id, music_gen_model=body.music_gen_model,
             )
             task_id = task.id
+            _update_job_celery(db, job.id, task.id)
         except Exception as e:
             logger.warning(f"Celery unavailable ({e}), blending synchronously")
             blended = _blend_embeddings(embeddings)
-            result = _sync_generate_music(json.dumps(blended), body.text_prompt, 0, user.id, body.music_gen_model)
+            result = _sync_generate_music(json.dumps(blended), body.text_prompt, 0, user.id, body.music_gen_model, job_id=job.id, db=db)
             task_id = f"sync-{result.get('music_id', 'blend')}"
             _store_sync_result(task_id, result)
 
     return BlendGenerateResponse(
-        task_id=task_id, music_gen_model=body.music_gen_model,
+        task_id=task_id, job_id=job.id, music_gen_model=body.music_gen_model,
         num_blends=len(body.blends),
     )
 
@@ -229,7 +294,7 @@ def list_blend_presets():
 def generate_batch(
     request: Request,
     body: BatchGenerateRequest,
-    processing_mode: Literal["sync", "async", "auto"] = Query("sync"),
+    processing_mode: Literal["sync", "async", "auto"] = Query("auto"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -251,6 +316,14 @@ def generate_batch(
     tasks: list[BatchTaskInfo] = []
     from app.api.v1.audio import _store_sync_result
 
+    # Create a single Job representing the batch operation
+    job = create_job(db, user, "music_generation", {
+        "batch_id": batch_id,
+        "style_vector_id": body.style_vector_id,
+        "prompts": body.prompts,
+        "music_gen_models": body.music_gen_models,
+    })
+
     if processing_mode == "sync":
         for prompt in body.prompts:
             for model in body.music_gen_models:
@@ -258,6 +331,8 @@ def generate_batch(
                 sid = f"sync-{result.get('music_id', 'unknown')}-{batch_id}"
                 _store_sync_result(sid, result)
                 tasks.append(BatchTaskInfo(task_id=sid, prompt=prompt, model=model))
+        # Mark batch job completed
+        update_job_status(db, job, "completed", stage="completed", progress=100)
     elif processing_mode == "async":
         try:
             from app.tasks.celery_app import celery_app
@@ -271,6 +346,8 @@ def generate_batch(
                     celery_app.backend.client.sadd(batch_key, task.id)
                     tasks.append(BatchTaskInfo(task_id=task.id, prompt=prompt, model=model))
             celery_app.backend.client.expire(batch_key, 3600)
+            celery_app.backend.client.setex(f"batch-job:{batch_id}", 3600, str(job.id))
+            update_job_status(db, job, "running", stage="queued", progress=0)
         except Exception as e:
             raise HTTPException(status_code=503, detail=f"后台队列不可用 (Redis/Celery 未启动): {e}")
     else:
@@ -286,6 +363,8 @@ def generate_batch(
                     celery_app.backend.client.sadd(batch_key, task.id)
                     tasks.append(BatchTaskInfo(task_id=task.id, prompt=prompt, model=model))
             celery_app.backend.client.expire(batch_key, 3600)
+            celery_app.backend.client.setex(f"batch-job:{batch_id}", 3600, str(job.id))
+            update_job_status(db, job, "running", stage="queued", progress=0)
         except Exception as e:
             logger.warning(f"Celery unavailable ({e}), running batch synchronously")
             for prompt in body.prompts:
@@ -294,6 +373,7 @@ def generate_batch(
                     sid = f"sync-{result.get('music_id', 'unknown')}-{batch_id}"
                     _store_sync_result(sid, result)
                     tasks.append(BatchTaskInfo(task_id=sid, prompt=prompt, model=model))
+            update_job_status(db, job, "completed", stage="completed", progress=100)
 
     return BatchGenerateResponse(batch_id=batch_id, tasks=tasks)
 
@@ -302,6 +382,7 @@ def generate_batch(
 def get_batch_status(
     batch_id: str,
     user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     """Get status of all tasks in a batch using Redis SET index."""
     from app.tasks.celery_app import celery_app
@@ -321,7 +402,7 @@ def get_batch_status(
                 continue
             try:
                 meta = _json.loads(raw)
-            except Exception:
+            except (json.JSONDecodeError, TypeError, ValueError):
                 cells.append(BatchCellInfo(task_id=tid, prompt="", model="", status="pending"))
                 continue
             result = meta.get("result", {}) if isinstance(meta.get("result"), dict) else {}
@@ -336,13 +417,14 @@ def get_batch_status(
             cells.append(BatchCellInfo(
                 task_id=tid,
                 prompt=result.get("prompt", ""),
-                model=result.get("model", ""),
+                model=result.get("model") or result.get("music_gen_model", ""),
                 status=status,
                 music_id=result.get("music_id"),
                 file_path=result.get("file_path"),
             ))
-    except Exception:
-        pass  # Redis unavailable — fall through to sync check below
+    except (ConnectionError, TimeoutError, OSError) as e:
+        logger.debug(f"Redis/broker unavailable for batch {batch_id}: {e}")
+        # Fall through to sync check below
 
     # Fallback: check in-memory sync results when Redis had no data
     if not cells:
@@ -360,7 +442,32 @@ def get_batch_status(
                 ))
                 completed += 1
 
-    return BatchStatusResponse(batch_id=batch_id, cells=cells, total=len(cells), completed=completed)
+    failed = sum(1 for cell in cells if cell.status == "failed")
+    done = completed + failed
+    total = len(cells)
+    if total:
+        try:
+            raw_job_id = celery_app.backend.client.get(f"batch-job:{batch_id}")
+            if raw_job_id:
+                job_id = int(raw_job_id.decode() if isinstance(raw_job_id, bytes) else raw_job_id)
+                from app.models.job import Job
+                job = db.query(Job).filter(Job.id == job_id, Job.user_id == user.id).first()
+                if job and job.status not in ("completed", "failed", "cancelled"):
+                    progress = min(100, int(done * 100 / total))
+                    if done >= total:
+                        terminal = "failed" if completed == 0 and failed > 0 else "completed"
+                        update_job_status(db, job, terminal, stage="completed", progress=100, result={
+                            "batch_id": batch_id,
+                            "total": total,
+                            "completed": completed,
+                            "failed": failed,
+                        })
+                    else:
+                        update_job_status(db, job, "running", stage="generating", progress=progress)
+        except Exception as e:
+            logger.debug(f"Failed to update batch job status for {batch_id}: {e}")
+
+    return BatchStatusResponse(batch_id=batch_id, cells=cells, total=total, completed=completed)
 
 
 @router.get("/status/{task_id}", response_model=StatusResponse)
@@ -381,17 +488,15 @@ def get_music_task_status(task_id: str):
             title=meta.get("title"),
             duration_seconds=meta.get("duration_seconds"),
             music_gen_model=meta.get("music_gen_model"),
+            provider_mode=meta.get("provider_mode"),
             style_vector=meta.get("style_vector"),
         )
 
     try:
         result = celery_app.AsyncResult(task_id)
-    except Exception as e:
-        return StatusResponse(task_id=task_id, stage="pending", progress=0, message=f"查询失败: {e}")
-
-    try:
         state = result.state
-    except Exception:
+    except Exception as e:
+        logger.debug(f"Celery backend unavailable for task {task_id}: {e}")
         return StatusResponse(task_id=task_id, stage="pending", progress=0, message="任务排队中")
 
     if state == "PENDING":
@@ -418,12 +523,31 @@ def get_music_task_status(task_id: str):
             title=meta.get("title"),
             duration_seconds=meta.get("duration_seconds"),
             music_gen_model=meta.get("music_gen_model"),
+            provider_mode=meta.get("provider_mode"),
         )
 
     if state == "FAILURE":
         return StatusResponse(task_id=task_id, stage="failed", progress=0, message=str(result.info or ""))
 
     return StatusResponse(task_id=task_id, stage=str(state), progress=0, message="")
+
+
+@router.get("/public/{music_id}/download")
+def download_public_music(
+    music_id: int,
+    db: Session = Depends(get_db),
+):
+    """Download a public featured music file."""
+    music = db.query(GeneratedMusic).filter(GeneratedMusic.id == music_id).first()
+    if not music:
+        raise HTTPException(status_code=404, detail="Music not found")
+    if not os.path.isfile(music.file_path):
+        raise HTTPException(status_code=404, detail="Audio file not found")
+    return FileResponse(
+        path=music.file_path,
+        media_type="audio/wav",
+        filename=os.path.basename(music.file_path),
+    )
 
 
 @router.get("/{music_id}/download")
@@ -468,6 +592,7 @@ def list_featured_music(
             file_path=m.file_path,
             duration_seconds=m.duration_seconds,
             music_gen_model=m.music_gen_model or "musicgen_small",
+            provider_mode=m.provider_mode or "mock",
             created_at=m.created_at,
         )
         for m in items

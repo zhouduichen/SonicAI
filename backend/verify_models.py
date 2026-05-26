@@ -70,6 +70,7 @@ def main():
     print("=" * 70)
     print("  SonicAI Model Dependency Check")
     print("=" * 70)
+    print(f"  Python: {sys.executable}")
 
     # Python packages
     print("\n[Python Packages]")
@@ -90,6 +91,7 @@ def main():
         import torch
         print(f"  CUDA available: YES ({count} device(s))")
         print(f"  PyTorch version: {torch.__version__}")
+        print(f"  CUDA runtime: {torch.version.cuda}")
         for i in range(count):
             print(f"  GPU {i}: {torch.cuda.get_device_name(i)}")
     else:
@@ -131,12 +133,15 @@ def main():
 
     print("=" * 70)
 
-    return 0 if not (core_missing or music_missing) else 1
+    # MusicGen/AudioLDM are optional in this local build because providers can
+    # fall back to lightweight generation. Core audio, voice training, and async
+    # queue packages are required for the app to run correctly.
+    return 0 if not (core_missing or voice_missing or async_missing) else 1
 
 
-def _try_import(name: str) -> bool:
+def _try_import(import_name: str) -> bool:
     try:
-        __import__(DEPS[name]["import"])
+        __import__(import_name)
         return True
     except ImportError:
         return False

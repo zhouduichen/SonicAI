@@ -1,10 +1,12 @@
-"""Provider factory: maps model keys to provider instances."""
+"""Provider factory: maps model keys to provider instances.
+
+CRITICAL: Provider classes are imported lazily because their top-level
+imports (laion_clap, demucs, torch/audiocraft) can make unauthenticated
+HuggingFace API calls during module load, blocking app startup for 20+ seconds.
+"""
 
 import logging
 from app.models.providers.base import VocalSepProvider, StyleExtractProvider, MusicGenProvider
-from app.models.providers.local_demucs import LocalDemucsProvider
-from app.models.providers.local_clap import LocalCLAPProvider
-from app.models.providers.local_musicgen import LocalMusicGenProvider
 from app.models.model_registry import (
     validate_model_key, get_model_info, CategoryKey,
     VOCAL_SEP_MODELS, STYLE_EXTRACT_MODELS, MUSIC_GEN_MODELS,
@@ -28,11 +30,16 @@ def get_provider(key: str) -> VocalSepProvider | StyleExtractProvider | MusicGen
 
 
 def _create_provider(key: str):
+    # Lazy imports — avoid triggering laion_clap/demucs/torch HuggingFace
+    # API calls at module load time (saves ~20s on cold start).
     if validate_model_key("vocal_sep", key):
+        from app.models.providers.local_demucs import LocalDemucsProvider
         return LocalDemucsProvider(key)
     if validate_model_key("style_extract", key):
+        from app.models.providers.local_clap import LocalCLAPProvider
         return LocalCLAPProvider(key)
     if validate_model_key("music_gen", key):
+        from app.models.providers.local_musicgen import LocalMusicGenProvider
         return LocalMusicGenProvider(key)
     logger.error(f"Unknown model key: {key}")
     return None
@@ -41,11 +48,24 @@ def _create_provider(key: str):
 _PACKAGE_AVAILABILITY: dict[str, bool] = {}
 
 def _check_package_installed(import_name: str) -> bool:
-    """Check if a Python package is actually importable (cached)."""
+    """Check if a Python package is actually importable (cached).
+
+    Uses importlib.util.find_spec to avoid triggering expensive imports
+    (e.g. laion_clap makes HuggingFace API calls during import).
+    """
     if import_name not in _PACKAGE_AVAILABILITY:
         try:
-            __import__(import_name)
-            _PACKAGE_AVAILABILITY[import_name] = True
+            from importlib.util import find_spec
+            spec = find_spec(import_name)
+            if spec is None:
+                _PACKAGE_AVAILABILITY[import_name] = False
+            else:
+                # Spec found — package is installed but may fail at import time.
+                # Suppress HuggingFace import checks for known offenders.
+                import os as _os3
+                _os3.environ.setdefault("HF_HUB_DISABLE_IMPORT_CHECK", "1")
+                __import__(import_name)
+                _PACKAGE_AVAILABILITY[import_name] = True
         except ImportError:
             _PACKAGE_AVAILABILITY[import_name] = False
     return _PACKAGE_AVAILABILITY[import_name]
@@ -64,7 +84,7 @@ def _is_model_installed(model_key: str) -> bool:
     if validate_model_key("music_gen", model_key):
         if model_key.startswith("audioldm"):
             return _check_package_installed("diffusers")
-        return _check_package_installed("audiocraft")
+        return _check_package_installed("transformers")
     return False
 
 

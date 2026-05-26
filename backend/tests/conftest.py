@@ -6,7 +6,8 @@ from sqlalchemy.orm import sessionmaker
 
 os.environ.setdefault("SECRET_KEY", "test-secret-key")
 
-from app.core.database import Base, get_db
+from app.core.database import Base, get_db as database_get_db
+from app.core.deps import get_db as deps_get_db
 from app.main import app
 from app.services.auth_service import create_default_user
 
@@ -51,7 +52,8 @@ def client(db):
         finally:
             pass
 
-    app.dependency_overrides[get_db] = _get_db_override
+    app.dependency_overrides[database_get_db] = _get_db_override
+    app.dependency_overrides[deps_get_db] = _get_db_override
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()

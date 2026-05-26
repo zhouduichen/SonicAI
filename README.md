@@ -2,52 +2,52 @@
 
 上传音频 → AI 分离人声提取风格 → 输入文字描述 → AI 生成原创音乐
 
-## 快速开始
-
-### 前置条件
-
-- Python 3.10+（推荐 3.12）
-- Node.js 18+
-- **ffmpeg**（RVC 声音训练需要，音频处理也需要）
-- （可选）Redis — 仅 Celery 异步模式需要，默认同步模式不需要
-
-### 安装 ffmpeg
+## 快速开始（一键启动）
 
 ```bash
-# Windows (winget)
-winget install -e --id Gyan.FFmpeg
-
-# macOS
-brew install ffmpeg
-
-# Linux
-sudo apt install ffmpeg
-```
-
-### 启动
-
-```bash
-# 1. 安装依赖
+# 安装依赖（仅首次）
 cd frontend && npm install
 cd ../backend && pip install -r requirements.txt
+cd ..
 
-# 2. 启动后端
-cd backend
-# Windows: 确保 ffmpeg 在 PATH 中
-uvicorn app.main:app --host 0.0.0.0 --port 8000
-
-# 3. 启动前端
-cd frontend
-# Mac/Linux:
-npm run dev
-# Windows (Git Bash 有 npx 引号 bug):
-npm run dev:win
-# 或直接: node node_modules/next/dist/bin/next dev -p 3000
+# 一键启动
+python start_all.py --reset
 ```
 
 打开 http://localhost:3000，默认账号 `admin / admin123`。
 
-> **注意：** 不需要 Redis 和 Celery。所有处理默认使用同步模式，直接在请求中完成。声音训练在后台线程中运行。
+> **注意：** 首次启动会自动下载 AI 模型权重（约 4GB），需要 5-15 分钟。之后启动秒级完成。
+
+## 预缓存模型（推荐部署前执行）
+
+```bash
+cd backend
+python precache_models.py
+```
+
+预缓存以下模型到本地 `~/.cache/`，后续启动无需下载：
+
+| 模型 | 大小 | 用途 |
+|------|------|------|
+| Demucs htdemucs | ~300 MB | 人声/伴奏分离 |
+| LAION-CLAP 630k-audioset | ~1 GB | 音乐风格特征提取 |
+| MusicGen Medium | ~3 GB | AI 音乐生成（可选） |
+| HuBERT chinese-base | ~400 MB | RVC 声音克隆 |
+| Roberta base | ~500 MB | CLAP 文本编码 |
+
+设置 `HF_TOKEN` 环境变量可加速下载（HuggingFace 认证用户不限速）。
+
+## Docker 部署
+
+```bash
+# GPU 版本
+docker compose up -d
+
+# CPU 版本
+docker compose -f docker-compose.yml -f docker-compose.cpu.yml up -d
+```
+
+Docker 构建时自动运行 `precache_models.py`，模型权重嵌入镜像中，运行时无需下载。
 
 ## 当前 AI 模型状态
 

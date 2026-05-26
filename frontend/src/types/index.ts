@@ -68,7 +68,7 @@ export interface ModelSelection {
 
 export type HardwareTier = "ultra" | "high" | "mid" | "low" | "cpu";
 
-export type PreferenceMode = "speed" | "quality";
+export type PreferenceMode = "speed" | "balanced" | "quality";
 
 export type ProcessingMode = "auto" | "sync" | "async";
 
@@ -98,6 +98,7 @@ export interface VoiceModel {
   sourceAudioIds: number[];
   status: "pending" | "preprocessing" | "training" | "ready" | "failed";
   epoch: number;
+  targetEpochs?: number;
   qualityTier: "preview" | "standard" | "premium";
   durationSeconds: number;
   createdAt: string;
@@ -124,6 +125,7 @@ export interface Song {
   errorMessage?: string;
   lyricsProvider?: string;
   instrumentalProvider?: string;
+  svsProvider?: string;
   vocalProvider?: string;
   hasVocals?: boolean;
   providerMode?: "real" | "mock";

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
-import { House, MusicNotes, WaveSine, Books, Playlist, Disc, Microphone, Intersect, GridFour, Gear } from "@phosphor-icons/react";
+import { House, WaveSine, Books, GridFour, Playlist, Gear, Disc } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import ThemeToggle from "./ThemeToggle";
 
@@ -14,13 +14,10 @@ interface SidebarProps {
 }
 
 const navItems = [
-  { id: "studio", label: "STUDIO", sub: "创作工作室", icon: WaveSine },
-  { id: "library", label: "LIBRARY", sub: "风格库", icon: Books },
-  { id: "blend", label: "BLEND", sub: "混合创作", icon: Intersect },
-  { id: "batch", label: "BATCH", sub: "批量创作", icon: GridFour },
-  { id: "voice", label: "VOICE", sub: "声音模型库", icon: Microphone },
-  { id: "song", label: "SONG", sub: "歌曲创作", icon: MusicNotes },
-  { id: "history", label: "ARCHIVE", sub: "生成记录", icon: Playlist },
+  { id: "create", label: "CREATE", sub: "创作台", icon: WaveSine },
+  { id: "assets", label: "ASSETS", sub: "素材库", icon: Books },
+  { id: "lab", label: "LAB", sub: "实验室", icon: GridFour },
+  { id: "archive", label: "ARCHIVE", sub: "作品库", icon: Playlist },
 ];
 
 export default function Sidebar({ activeTab, onTabChange, onSettingsClick }: SidebarProps) {
@@ -177,18 +174,29 @@ export default function Sidebar({ activeTab, onTabChange, onSettingsClick }: Sid
         <div className="flex items-center justify-between px-3 py-2">
           <div className="flex items-center gap-2">
             <span
-              className="w-2 h-2 rounded-full inline-block transition-colors duration-500"
+              className="w-2 h-2 rounded-full inline-block"
               style={{
-                background: backendRunning ? "#22c55e" : "#666",
-                boxShadow: backendRunning ? "0 0 6px rgba(34,197,94,0.5)" : "none",
+                background: toggling
+                  ? "#e8a840"
+                  : backendRunning
+                    ? "#22c55e"
+                    : "#666",
+                boxShadow: toggling
+                  ? "0 0 8px rgba(232,168,64,0.6)"
+                  : backendRunning
+                    ? "0 0 6px rgba(34,197,94,0.5)"
+                    : "none",
+                transition: "background 0.6s cubic-bezier(0.32, 0.72, 0, 1), box-shadow 0.6s cubic-bezier(0.32, 0.72, 0, 1)",
+                animation: toggling ? "pulse 1s ease-in-out infinite" : "none",
               }}
             />
             <div>
               <p className="text-[9px] font-mono tracking-[0.1em]" style={{ color: "var(--text-tertiary)" }}>
                 BACKEND
               </p>
-              <p className="text-xs mt-0.5" style={{ color: backendRunning ? "var(--text-primary)" : "var(--text-tertiary)" }}>
-                {backendRunning ? "运行中" : "已停止"}
+              <p className="text-xs mt-0.5 transition-colors duration-500"
+                style={{ color: toggling ? "#e8a840" : backendRunning ? "var(--text-primary)" : "var(--text-tertiary)" }}>
+                {toggling ? (backendRunning ? "停止中..." : "连接中...") : backendRunning ? "运行中" : "已停止"}
               </p>
             </div>
           </div>

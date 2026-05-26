@@ -1,11 +1,11 @@
 import type { HardwareTier, HardwareTierConfig, PreferenceMode, ProcessingMode } from "@/types";
 
 const PRESET_TIME: Record<HardwareTier, Record<PreferenceMode, number>> = {
-  ultra: { speed: 60, quality: 120 },
-  high: { speed: 80, quality: 150 },
-  mid: { speed: 90, quality: 180 },
-  low: { speed: 120, quality: 160 },
-  cpu: { speed: 180, quality: 300 },
+  ultra: { speed: 60, balanced: 80, quality: 120 },
+  high: { speed: 80, balanced: 110, quality: 150 },
+  mid: { speed: 90, balanced: 140, quality: 180 },
+  low: { speed: 120, balanced: 140, quality: 160 },
+  cpu: { speed: 180, balanced: 240, quality: 300 },
 };
 
 export const HARDWARE_TIERS: HardwareTierConfig[] = [
@@ -15,6 +15,7 @@ export const HARDWARE_TIERS: HardwareTierConfig[] = [
     maxVramGB: 16,
     presets: {
       speed: { vocalSepModel: "demucs_mdx_extra", styleExtractModel: "clap_laion", musicGenModel: "musicgen_medium" },
+      balanced: { vocalSepModel: "demucs_htdemucs", styleExtractModel: "clap_laion", musicGenModel: "musicgen_melody" },
       quality: { vocalSepModel: "demucs_htdemucs", styleExtractModel: "clap_msclap", musicGenModel: "musicgen_large" },
     },
   },
@@ -24,6 +25,7 @@ export const HARDWARE_TIERS: HardwareTierConfig[] = [
     maxVramGB: 12,
     presets: {
       speed: { vocalSepModel: "demucs_mdx_extra", styleExtractModel: "clap_laion", musicGenModel: "musicgen_medium" },
+      balanced: { vocalSepModel: "demucs_htdemucs", styleExtractModel: "clap_laion", musicGenModel: "musicgen_melody" },
       quality: { vocalSepModel: "demucs_htdemucs", styleExtractModel: "clap_msclap", musicGenModel: "musicgen_melody" },
     },
   },
@@ -33,6 +35,7 @@ export const HARDWARE_TIERS: HardwareTierConfig[] = [
     maxVramGB: 8,
     presets: {
       speed: { vocalSepModel: "spleeter_2stems", styleExtractModel: "clap_laion", musicGenModel: "musicgen_small" },
+      balanced: { vocalSepModel: "spleeter_5stems", styleExtractModel: "clap_laion", musicGenModel: "musicgen_medium" },
       quality: { vocalSepModel: "spleeter_5stems", styleExtractModel: "clap_laion", musicGenModel: "musicgen_medium" },
     },
   },
@@ -42,6 +45,7 @@ export const HARDWARE_TIERS: HardwareTierConfig[] = [
     maxVramGB: 6,
     presets: {
       speed: { vocalSepModel: "spleeter_2stems", styleExtractModel: "encodec_6kbps", musicGenModel: "musicgen_small" },
+      balanced: { vocalSepModel: "spleeter_5stems", styleExtractModel: "encodec_6kbps", musicGenModel: "musicgen_small" },
       quality: { vocalSepModel: "spleeter_5stems", styleExtractModel: "encodec_6kbps", musicGenModel: "musicgen_small" },
     },
   },
@@ -51,6 +55,7 @@ export const HARDWARE_TIERS: HardwareTierConfig[] = [
     maxVramGB: 0,
     presets: {
       speed: { vocalSepModel: "spleeter_2stems", styleExtractModel: "encodec_6kbps", musicGenModel: "musicgen_small" },
+      balanced: { vocalSepModel: "spleeter_5stems", styleExtractModel: "clap_laion", musicGenModel: "musicgen_small" },
       quality: { vocalSepModel: "spleeter_5stems", styleExtractModel: "clap_laion", musicGenModel: "musicgen_small" },
     },
   },
@@ -63,6 +68,12 @@ export function getTierConfig(tier: HardwareTier): HardwareTierConfig {
 export function getEstimatedTime(tier: HardwareTier, mode: PreferenceMode): number {
   return PRESET_TIME[tier][mode];
 }
+
+export const PREFERENCE_LABELS: Record<PreferenceMode, { label: string; sub: string; icon: string }> = {
+  speed: { label: "快速", sub: "优先速度", icon: "⚡" },
+  balanced: { label: "平衡", sub: "均衡之选", icon: "⚖" },
+  quality: { label: "高质量", sub: "最佳效果", icon: "♛" },
+};
 
 export const PROCESSING_MODE_LABELS: Record<ProcessingMode, { label: string; sub: string }> = {
   auto: { label: "自动", sub: "系统选择" },

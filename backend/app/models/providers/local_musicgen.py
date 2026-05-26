@@ -1,7 +1,10 @@
-"""Local MusicGen provider for music generation."""
+"""Local MusicGen provider for music generation.
+
+Uses HuggingFace transformers (MusicgenForConditionalGeneration) —
+no audiocraft or diffusers required.
+"""
 
 import os
-import time
 import math
 import struct
 import wave
@@ -15,22 +18,16 @@ settings = get_settings()
 
 try:
     import torch
-    from audiocraft.models import MusicGen as _MusicGenModel
+    import torchaudio
+    from transformers import AutoProcessor, MusicgenForConditionalGeneration
 
     MUSICGEN_AVAILABLE = True
-    logger.info("audiocraft package found — using real MusicGen")
+    logger.info("transformers + torch OK — real MusicGen available")
 except ImportError:
     MUSICGEN_AVAILABLE = False
-    logger.warning("audiocraft not installed — using mock music generation")
+    logger.warning("transformers not available — using mock music generation")
 
-try:
-    from diffusers import AudioLDMPipeline  # noqa: F401
-
-    AUDIOLDM_AVAILABLE = True
-    logger.info("diffusers package found — AudioLDM available")
-except ImportError:
-    AUDIOLDM_AVAILABLE = False
-    logger.warning("diffusers not installed — AudioLDM will use mock")
+AUDIOLDM_AVAILABLE = False  # diffusers not installed, always use MusicGen path
 
 
 class LocalMusicGenProvider(MusicGenProvider):
@@ -45,8 +42,14 @@ class LocalMusicGenProvider(MusicGenProvider):
     def model_key(self) -> str:
         return self._key
 
-    def load(self, use_onnx: bool = False) -> None:
-        self._use_onnx = use_onnx
+    def load(self, use_onnx: bool = False, force_mock: bool = False) -> None:
+        self._use_onnx = use_onnx and not force_mock
+        self._force_mock = force_mock
+        if force_mock:
+            self._loaded = True
+            self._model = None
+            logger.info(f"Mock MusicGen ({self._key}) ready (forced)")
+            return
         if use_onnx:
             self._loaded = True
             logger.info(f"ONNX MusicGen ({self._key}) ready (CPU path)")
@@ -64,16 +67,27 @@ class LocalMusicGenProvider(MusicGenProvider):
                     "musicgen_melody": "facebook/musicgen-melody",
                 }
                 name = hf_names.get(self._key, "facebook/musicgen-small")
-                self._model = _MusicGenModel.get_pretrained(name)
-                self._model.set_generation_params(duration=30)
+
+                # Use default HF_HOME cache (~/.cache/huggingface/hub/) so
+                # pre-cached models from precache_models.py are reused.
+                import os as _os2
+                hf_home = _os2.environ.get("HF_HOME") or _os2.path.expanduser("~/.cache/huggingface")
+                _os2.environ.setdefault("HF_HOME", hf_home)
+                _os2.environ.setdefault("HF_HUB_CACHE", _os2.path.join(hf_home, "hub"))
+                _os2.environ.setdefault("TRANSFORMERS_CACHE", _os2.path.join(hf_home, "hub"))
+
+                self._processor = AutoProcessor.from_pretrained(name)
+                self._model = MusicgenForConditionalGeneration.from_pretrained(name)
+                device = "cuda" if torch.cuda.is_available() else "cpu"
+                self._model = self._model.to(device)
                 self._loaded = True
-                logger.info(f"MusicGen model loaded: {name}")
+                logger.info(f"MusicGen model loaded: {name} (device={device})")
             except Exception as e:
                 logger.error(f"Failed to load MusicGen: {e}")
                 self._loaded = False
                 self._model = None
         else:
-            self._loaded = True  # Mock
+            self._loaded = True  # Mock for AudioLDM or uninstalled
 
     def unload(self) -> None:
         self._loaded = False
@@ -137,34 +151,74 @@ class LocalMusicGenProvider(MusicGenProvider):
             logger.warning(f"ONNX inference failed for {self._key}: {e}")
             return None
 
-    def generate(self, embedding: list[float], text_prompt: str) -> dict:
+    def generate(self, embedding: list[float], text_prompt: str, reference_audio_path: str | None = None) -> dict:
         os.makedirs(settings.GENERATED_DIR, exist_ok=True)
         output_filename = f"generated_{uuid.uuid4().hex[:8]}.wav"
         output_path = os.path.join(settings.GENERATED_DIR, output_filename)
 
         duration = 30
 
-        if getattr(self, "_use_onnx", False):
+        if getattr(self, "_force_mock", False):
+            # Skip straight to mock fallback
+            pass
+        elif getattr(self, "_use_onnx", False):
             result = self._infer_onnx(embedding, text_prompt, output_path)
             if result is not None:
                 result["provider_mode"] = "real"
                 return result
-
-        if MUSICGEN_AVAILABLE and self._model is not None and not self._key.startswith("audioldm"):
+        elif MUSICGEN_AVAILABLE and self._model is not None and not self._key.startswith("audioldm"):
             try:
-                import torchaudio
-                embedding_tensor = torch.tensor(embedding, dtype=torch.float32).unsqueeze(0)
-                wav_tokens = self._model.generate_with_chroma(
-                    descriptions=[text_prompt],
-                    melody_wavs=None,
-                    progress=True,
-                )
-                wav = wav_tokens[0].cpu()
-                torchaudio.save(output_path, wav, 32000)
-                duration = int(wav.shape[-1] / 32000)
+                import numpy as np
+                import soundfile as sf
+
+                processor_kwargs: dict = {
+                    "text": [text_prompt],
+                    "padding": True,
+                    "return_tensors": "pt",
+                }
+
+                # For musicgen-melody, pass reference audio as melody conditioning
+                is_melody = "melody" in self._key
+                if is_melody and reference_audio_path and os.path.exists(reference_audio_path):
+                    try:
+                        melody_audio, melody_sr = sf.read(reference_audio_path)
+                        if melody_audio.ndim > 1:
+                            melody_audio = melody_audio.mean(axis=1)
+                        processor_kwargs["audio"] = [melody_audio]
+                        processor_kwargs["sampling_rate"] = [melody_sr]
+                        logger.info(f"MusicGen melody conditioning: {reference_audio_path}")
+                    except Exception as e:
+                        logger.warning(f"Failed to load reference audio for melody: {e}")
+
+                inputs = self._processor(**processor_kwargs)
+                device = "cuda" if torch.cuda.is_available() else "cpu"
+                inputs = {k: v.to(device) for k, v in inputs.items()}
+
+                # Use embedding norm as guidance_scale (stronger style → higher adherence)
+                emb_norm = float(np.linalg.norm(embedding)) if embedding else 0.0
+                guidance_scale = 1.0 + min(emb_norm / 10.0, 2.0)  # range [1.0, 3.0]
+
+                with torch.no_grad():
+                    audio_values = self._model.generate(
+                        **inputs,
+                        max_new_tokens=1500,
+                        guidance_scale=guidance_scale,
+                    )
+                wav = audio_values[0].cpu()
+                sample_rate = self._model.config.audio_encoder.sampling_rate
+
+                audio_np = wav.squeeze().numpy().T
+                if audio_np.ndim > 1:
+                    audio_np = audio_np.mean(axis=0)
+                sf.write(output_path, audio_np, int(sample_rate))
+
+                duration = int(audio_np.shape[-1] / sample_rate)
+                logger.info(f"MusicGen generated: {output_path} ({duration}s, {sample_rate}Hz, guidance={guidance_scale:.2f}, melody={is_melody and reference_audio_path is not None})")
                 return {"file_path": output_path, "duration_seconds": duration, "provider_mode": "real"}
             except Exception as e:
                 logger.error(f"MusicGen generation failed: {e}")
+                if not get_settings().ENABLE_MOCK_FALLBACK:
+                    raise
 
         # Mock fallback: generate a sine tone WAV
         sample_rate = 32000

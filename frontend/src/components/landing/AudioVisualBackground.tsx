@@ -3,10 +3,20 @@
 const BAR_COUNT = 28;
 const FLOATING_NOTES = 16;
 
+function seededUnit(seed: number) {
+  let value = (seed + 0x6d2b79f5) | 0;
+  value = Math.imul(value ^ (value >>> 15), value | 1);
+  value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+  return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+}
+
+function cssNumber(value: number) {
+  return Number(value.toFixed(3)).toString();
+}
+
 function makeBars(count: number, seed: number) {
   return Array.from({ length: count }, (_, i) => {
-    const x = Math.sin(i * 12.9898 + seed * 78.233) * 43758.5453;
-    const r = x - Math.floor(x);
+    const r = seededUnit(seed * 1000 + i);
     return {
       height: 10 + r * 75,
       duration: 0.5 + r * 1.5,
@@ -26,9 +36,9 @@ export default function AudioVisualBackground() {
       <div className="absolute left-4 bottom-1/4 flex items-end gap-[2px] opacity-[0.14]">
         {leftBars.map((b, i) => (
           <div key={`l-${i}`} className="w-[4px] rounded-t-sm" style={{
-            height: `${b.height}px`,
+            height: `${cssNumber(b.height)}px`,
             background: `linear-gradient(to top, var(--accent), var(--accent-glow))`,
-            animation: `eq-pulse ${b.duration}s ease-in-out ${b.delay}s infinite`,
+            animation: `eq-pulse ${cssNumber(b.duration)}s ease-in-out ${cssNumber(b.delay)}s infinite`,
             boxShadow: "0 0 6px rgba(212,168,83,0.3)",
           }} />
         ))}
@@ -38,9 +48,9 @@ export default function AudioVisualBackground() {
       <div className="absolute right-4 top-1/4 flex items-end gap-[2px] opacity-[0.12] scale-x-[-1]">
         {rightBars.map((b, i) => (
           <div key={`r-${i}`} className="w-[4px] rounded-t-sm" style={{
-            height: `${b.height}px`,
+            height: `${cssNumber(b.height)}px`,
             background: `linear-gradient(to top, var(--accent), var(--accent-glow))`,
-            animation: `eq-pulse ${b.duration}s ease-in-out ${b.delay}s infinite`,
+            animation: `eq-pulse ${cssNumber(b.duration)}s ease-in-out ${cssNumber(b.delay)}s infinite`,
             boxShadow: "0 0 6px rgba(212,168,83,0.3)",
           }} />
         ))}
@@ -63,11 +73,11 @@ export default function AudioVisualBackground() {
         <div key={`note-${i}`} className="absolute w-2 h-2 rotate-45"
           style={{
             left: `${(i / FLOATING_NOTES) * 100}%`,
-            top: `${20 + n.delay * 60}%`,
+            top: `${cssNumber(20 + n.delay * 60)}%`,
             background: "var(--accent)",
             opacity: 0.1,
             boxShadow: "0 0 4px rgba(212,168,83,0.4)",
-            animation: `note-float ${5 + n.delay * 8}s ease-in-out ${n.delay * 4}s infinite`,
+            animation: `note-float ${cssNumber(5 + n.delay * 8)}s ease-in-out ${cssNumber(n.delay * 4)}s infinite`,
           }} />
       ))}
     </div>

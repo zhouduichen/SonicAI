@@ -12,12 +12,22 @@ interface VoiceModelLibraryProps {
 }
 
 const QUALITY_LABELS: Record<string, string> = {
-  preview: "Preview",
-  standard: "Standard",
-  premium: "Premium",
+  preview: "预览",
+  standard: "标准",
+  premium: "高品质",
+};
+
+const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
+  pending: { label: "排队中", color: "#888", bg: "rgba(136,136,136,0.12)" },
+  preprocessing: { label: "预处理", color: "#e8a840", bg: "rgba(232,168,64,0.12)" },
+  training: { label: "训练中", color: "var(--accent)", bg: "var(--accent-soft)" },
+  ready: { label: "就绪", color: "#22c55e", bg: "rgba(34,197,94,0.12)" },
+  failed: { label: "失败", color: "#ef4444", bg: "rgba(239,68,68,0.12)" },
 };
 
 export default function VoiceModelLibrary({ models, onSelect, onDelete, selectedId }: VoiceModelLibraryProps) {
+  const inTrainingCount = models.filter(m => m.status === "training" || m.status === "preprocessing").length;
+
   return (
     <div className="card-outer">
       <div className="card-inner p-6 space-y-5 relative overflow-hidden">
@@ -35,10 +45,18 @@ export default function VoiceModelLibrary({ models, onSelect, onDelete, selected
               声音模型库
             </h3>
           </div>
-          <span className="text-[10px] font-mono tracking-[0.15em]"
-            style={{ color: "var(--text-tertiary)" }}>
-            {models.length} 个声音
-          </span>
+          <div className="flex items-center gap-2">
+            {inTrainingCount > 0 && (
+              <span className="flex items-center gap-1 text-[9px] font-mono" style={{ color: "var(--accent)" }}>
+                <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: "var(--accent)" }} />
+                {inTrainingCount} 训练中
+              </span>
+            )}
+            <span className="text-[10px] font-mono tracking-[0.15em]"
+              style={{ color: "var(--text-tertiary)" }}>
+              {models.length} 个声音
+            </span>
+          </div>
         </div>
 
         {models.length === 0 ? (
@@ -59,9 +77,21 @@ export default function VoiceModelLibrary({ models, onSelect, onDelete, selected
             <AnimatePresence>
               {models.map((model) => {
                 const active = selectedId === model.id;
-                const subLabel = model.status === "training"
-                  ? `TRAINING · ${model.epoch}/200 epoch`
-                  : `${QUALITY_LABELS[model.qualityTier] || model.qualityTier} · ${model.epoch} epochs · ${Math.round(model.durationSeconds)}s`;
+                const statusCfg = STATUS_CONFIG[model.status] || STATUS_CONFIG.pending;
+                const isReady = model.status === "ready";
+                const isBusy = model.status === "training" || model.status === "preprocessing";
+                const isFailed = model.status === "failed";
+                const targetEpochs = model.targetEpochs || (model.qualityTier === "preview" ? 20 : model.qualityTier === "standard" ? 100 : 200);
+                const percent = Math.round((model.epoch / targetEpochs) * 100);
+                const subLabel = isFailed
+                  ? `失败 · ${Math.round(model.durationSeconds)}s`
+                  : isReady
+                    ? `${QUALITY_LABELS[model.qualityTier] || model.qualityTier} · ${model.epoch} epoch · ${Math.round(model.durationSeconds)}s`
+                    : model.status === "training"
+                      ? `训练中 · ${model.epoch}/${targetEpochs} epoch (${percent}%)`
+                      : model.status === "preprocessing"
+                        ? "预处理中..."
+                        : "排队中";
                 return (
                   <motion.div
                     key={model.id}
@@ -94,14 +124,29 @@ export default function VoiceModelLibrary({ models, onSelect, onDelete, selected
                         style={{ color: "var(--text-tertiary)" }}>
                         {subLabel}
                       </p>
+                      {/* Progress bar for training */}
+                      {model.status === "training" && (
+                        <div className="mt-1.5 h-1 rounded-full overflow-hidden" style={{ background: "var(--bg-hover)" }}>
+                          <div className="h-full rounded-full transition-all duration-500"
+                            style={{
+                              width: `${Math.min((model.epoch / targetEpochs) * 100, 100)}%`,
+                              background: "var(--deco-gradient)",
+                            }} />
+                        </div>
+                      )}
                     </div>
 
-                    {active && (
-                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full shrink-0"
-                        style={{ background: "var(--accent)", color: "#0d0d0d" }}>
-                        {QUALITY_LABELS[model.qualityTier] || model.qualityTier}
-                      </span>
-                    )}
+                    {/* Status badge */}
+                    <span className="text-[9px] font-mono px-2 py-0.5 rounded-full shrink-0"
+                      style={{
+                        background: statusCfg.bg,
+                        color: statusCfg.color,
+                        border: `1px solid ${statusCfg.color}`,
+                        opacity: isBusy ? 1 : 0.8,
+                      }}>
+                      {isBusy && <span className="inline-block w-1 h-1 rounded-full mr-1 animate-pulse" style={{ background: statusCfg.color }} />}
+                      {statusCfg.label}
+                    </span>
 
                     <button
                       onClick={(e) => { e.stopPropagation(); onDelete(model.id); }}

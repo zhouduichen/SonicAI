@@ -1,8 +1,16 @@
 "use client";
 
-import { useState } from "react";
-import { GridFour, Play, Pause, Plus, X } from "@phosphor-icons/react";
+import { useState, useRef, useCallback } from "react";
+import { GridFour, Play, Pause, Plus, X, Sparkle, MusicNote, PianoKeys, FilmStrip, Leaf, Sun } from "@phosphor-icons/react";
 import type { ModelInfo } from "@/types";
+
+const PRESET_TEMPLATES = [
+  { icon: MusicNote, label: "Lo-Fi", prompt: "一首适合深夜放松的 Lo-Fi 音乐，带有柔和的鼓点和温暖的和弦" },
+  { icon: PianoKeys, label: "爵士", prompt: "带有爵士钢琴元素的氛围音乐，节奏舒缓" },
+  { icon: FilmStrip, label: "电影", prompt: "史诗般的电影配乐风格，管弦乐编曲，气势磅礴" },
+  { icon: Leaf, label: "自然", prompt: "适合冥想的大自然白噪音，伴有轻柔的钢琴" },
+  { icon: Sun, label: "夏日", prompt: "节奏轻快的夏日流行音乐，充满阳光和活力" },
+];
 
 interface BatchCell {
   task_id: string;
@@ -19,13 +27,15 @@ interface BatchConsoleProps {
   cells: BatchCell[];
   currentPlayingCell: string | null;
   onPlayCell: (taskId: string, filePath: string) => void;
+  suggestions?: string[];
 }
 
 export default function BatchConsole({
-  musicGenModels, onGenerate, isGenerating, cells, currentPlayingCell, onPlayCell,
+  musicGenModels, onGenerate, isGenerating, cells, currentPlayingCell, onPlayCell, suggestions = [],
 }: BatchConsoleProps) {
   const [prompts, setPrompts] = useState<string[]>(["", "", ""]);
   const [selectedModels, setSelectedModels] = useState<string[]>(["musicgen_small", "musicgen_medium"]);
+  const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   const toggleModel = (key: string) => {
     if (selectedModels.includes(key)) {
@@ -49,11 +59,44 @@ export default function BatchConsole({
     if (prompts.length > 1) setPrompts(prompts.filter((_, idx) => idx !== i));
   };
 
-  const handleGenerate = () => {
+  const handleGenerate = useCallback(() => {
     const validPrompts = prompts.filter((p) => p.trim());
     if (validPrompts.length === 0 || selectedModels.length === 0) return;
     onGenerate(validPrompts, selectedModels);
-  };
+  }, [prompts, selectedModels, onGenerate]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent, i: number) => {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      handleGenerate();
+      return;
+    }
+    if (e.key === "Tab") {
+      e.preventDefault();
+      const dir = e.shiftKey ? -1 : 1;
+      const next = i + dir;
+      if (next >= 0 && next < prompts.length) {
+        inputRefs.current[next]?.focus();
+      }
+    }
+  }, [prompts.length, handleGenerate]);
+
+  const fillFromSuggestions = useCallback(() => {
+    if (suggestions.length === 0) return;
+    setPrompts(suggestions.slice(0, Math.min(suggestions.length, 5)));
+  }, [suggestions]);
+
+  const applyTemplate = useCallback((prompt: string) => {
+    // Fill the first empty slot, or add a new row
+    const emptyIdx = prompts.findIndex((p) => !p.trim());
+    if (emptyIdx >= 0) {
+      const newPrompts = [...prompts];
+      newPrompts[emptyIdx] = prompt;
+      setPrompts(newPrompts);
+    } else if (prompts.length < 5) {
+      setPrompts([...prompts, prompt]);
+    }
+  }, [prompts]);
 
   const gridCols = Math.min(selectedModels.length, 5);
 
@@ -68,6 +111,44 @@ export default function BatchConsole({
           <span className="eyebrow">批量创作</span>
         </div>
 
+        {/* Template presets */}
+        <div>
+          <p className="text-xs font-mono tracking-wider mb-2" style={{ color: "var(--text-tertiary)" }}>
+            提示词模板
+          </p>
+          <div className="flex gap-2 flex-wrap">
+            {PRESET_TEMPLATES.map((t) => (
+              <button
+                key={t.label}
+                onClick={() => applyTemplate(t.prompt)}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-medium transition-all"
+                style={{
+                  background: "var(--bg-tertiary)",
+                  color: "var(--text-secondary)",
+                  border: "1px solid var(--border-color)",
+                }}
+              >
+                <t.icon size={10} />
+                {t.label}
+              </button>
+            ))}
+            {suggestions.length > 0 && (
+              <button
+                onClick={fillFromSuggestions}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-medium transition-all"
+                style={{
+                  background: "var(--accent-soft)",
+                  color: "var(--accent)",
+                  border: "1px solid var(--accent)",
+                }}
+              >
+                <Sparkle size={10} />
+                填充风格建议
+              </button>
+            )}
+          </div>
+        </div>
+
         {/* Prompts input */}
         <div className="space-y-2">
           <p className="text-xs font-mono tracking-wider" style={{ color: "var(--text-tertiary)" }}>
@@ -79,9 +160,11 @@ export default function BatchConsole({
                 {i + 1}.
               </span>
               <input
+                ref={(el) => { inputRefs.current[i] = el; }}
                 type="text"
                 value={p}
                 onChange={(e) => setPrompt(i, e.target.value)}
+                onKeyDown={(e) => handleKeyDown(e, i)}
                 placeholder={`提示词 ${i + 1}...`}
                 className="flex-1 px-3 py-1.5 text-xs rounded-lg"
                 style={{

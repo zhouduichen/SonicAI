@@ -25,10 +25,12 @@ def _auto_migrate_sqlite():
 
     Called at startup before create_all, so that CREATE TABLE handles new
     tables while this function patches existing ones.  Only activates when
-    the database URL is SQLite — production PostgreSQL deployments use
-    Alembic migrations instead.
+    the database URL is SQLite AND DEBUG is enabled — production deployments
+    use Alembic migrations instead.
     """
     if "sqlite" not in settings.DATABASE_URL:
+        return
+    if not settings.DEBUG:
         return
 
     inspector = inspect(engine)
@@ -48,7 +50,14 @@ def _auto_migrate_sqlite():
                 nullable = "" if col.nullable else " NOT NULL"
                 default = ""
                 if col.default and col.default.arg is not None:
-                    default = f" DEFAULT {col.default.arg!r}"
+                    arg = col.default.arg
+                    if isinstance(arg, str):
+                        default = f" DEFAULT '{arg}'"
+                    elif isinstance(arg, (int, float)):
+                        default = f" DEFAULT {arg}"
+                    elif isinstance(arg, bool):
+                        default = f" DEFAULT {1 if arg else 0}"
+                    # Skip callables and complex types — they need Alembic
                 elif not col.nullable and col.server_default:
                     default = f" DEFAULT ({col.server_default.arg.text})" if hasattr(col.server_default.arg, "text") else ""
                 sql = f'ALTER TABLE "{table.name}" ADD COLUMN "{col.name}" {col_type}{nullable}{default}'

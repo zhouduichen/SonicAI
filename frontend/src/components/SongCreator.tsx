@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { MusicNotes, Spinner } from "@phosphor-icons/react";
-import type { Song, VoiceModel, StyleTag, GeneratedMusic } from "@/types";
+import type { Song, VoiceModel, StyleTag, GeneratedMusic, ProcessingMode } from "@/types";
 import { API_BASE, authHeaders } from "@/lib/auth";
+import { useJobPolling } from "@/lib/use-job-polling";
 
 const STEP_LABELS: Record<string, string> = {
   writing: "写词中...",
@@ -27,6 +28,7 @@ function normalizeSong(raw: any): Song {
     errorMessage: raw.errorMessage || raw.error_message || "",
     lyricsProvider: raw.lyricsProvider || raw.lyrics_provider || "",
     instrumentalProvider: raw.instrumentalProvider || raw.instrumental_provider || "",
+    svsProvider: raw.svsProvider || raw.svs_provider || "",
     vocalProvider: raw.vocalProvider || raw.vocal_provider || "",
     hasVocals: raw.hasVocals ?? raw.has_vocals ?? false,
     providerMode: raw.providerMode || raw.provider_mode || "mock",
@@ -39,10 +41,13 @@ interface SongCreatorProps {
   selectedStyle: StyleTag | null;
   onStyleSelect: (style: StyleTag | null) => void;
   playlist: GeneratedMusic[];
+  processingMode: ProcessingMode;
   onSongCreated: (song: Song) => void;
 }
 
-export default function SongCreator({ voiceModels, styles, selectedStyle, onStyleSelect, playlist, onSongCreated }: SongCreatorProps) {
+export default function SongCreator({
+  voiceModels, styles, selectedStyle, onStyleSelect, playlist, processingMode, onSongCreated,
+}: SongCreatorProps) {
   const [theme, setTheme] = useState("");
   const [voiceModelId, setVoiceModelId] = useState("");
   const [styleVectorId, setStyleVectorId] = useState("");
@@ -50,12 +55,46 @@ export default function SongCreator({ voiceModels, styles, selectedStyle, onStyl
   const [creating, setCreating] = useState(false);
   const [currentSong, setCurrentSong] = useState<Song | null>(null);
   const [songAudioUrl, setSongAudioUrl] = useState("");
+  const [songId, setSongId] = useState<number | null>(null);
+  const selectedStyleId = selectedStyle?.id;
+
+  // Custom fetcher mapping song status endpoint to job format
+  const songFetcher = useCallback(async (id: number) => {
+    const res = await fetch(`${API_BASE}/song/status/${id}`, {
+      headers: await authHeaders(),
+    });
+    if (!res.ok) throw new Error("Song status fetch failed");
+    const song = normalizeSong(await res.json());
+    setCurrentSong(song);
+    if (song.status === "completed") onSongCreated(song);
+    const statusMap: Record<string, string> = {
+      writing: "running", arranging: "running", singing: "running", mixing: "running",
+      completed: "completed", failed: "failed",
+    };
+    return {
+      status: statusMap[song.status] || "running",
+      progress: 0,
+      stage: song.status,
+      result: song as unknown as Record<string, unknown>,
+      error_message: song.errorMessage || null,
+    };
+  }, [onSongCreated]);
+
+  // Unified job polling replaces manual setInterval
+  useJobPolling(songId, {
+    interval: 2000,
+    timeout: 300000,
+    fetcher: songFetcher,
+    onCompleted: () => { setCreating(false); setSongId(null); },
+    onFailed: () => { setCreating(false); setSongId(null); },
+    onTimeout: () => { setCreating(false); setSongId(null); },
+  });
 
   useEffect(() => {
-    if (selectedStyle) {
-      setStyleVectorId(selectedStyle.id);
+    if (selectedStyleId) {
+      setStyleVectorId(selectedStyleId);
     }
-  }, [selectedStyle?.id]);
+  }, [selectedStyleId]);
 
   useEffect(() => {
     if (currentSong?.status !== "completed") return;
@@ -88,8 +127,9 @@ export default function SongCreator({ voiceModels, styles, selectedStyle, onStyl
     setCreating(true);
     setCurrentSong(null);
     setSongAudioUrl("");
+    setSongId(null);
     try {
-      const res = await fetch(`${API_BASE}/song/create`, {
+      const res = await fetch(`${API_BASE}/song/create?processing_mode=${processingMode}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -104,22 +144,7 @@ export default function SongCreator({ voiceModels, styles, selectedStyle, onStyl
       });
       if (!res.ok) throw new Error("Creation failed");
       const { song_id } = await res.json();
-
-      const interval = setInterval(async () => {
-        try {
-          const sr = await fetch(`${API_BASE}/song/status/${song_id}`, {
-            headers: await authHeaders(),
-          });
-          if (!sr.ok) return;
-          const song = normalizeSong(await sr.json());
-          setCurrentSong(song);
-          if (song.status === "completed" || song.status === "failed") {
-            clearInterval(interval);
-            setCreating(false);
-            if (song.status === "completed") onSongCreated(song);
-          }
-        } catch { /* keep polling */ }
-      }, 2000);
+      setSongId(song_id);
     } catch {
       setCreating(false);
     }
@@ -283,7 +308,7 @@ export default function SongCreator({ voiceModels, styles, selectedStyle, onStyl
                     </span>
                   )}
                   {currentSong.instrumentalProvider && (
-                    <span className={`text-[9px] font-mono px-2 py-0.5 rounded-full ${currentSong.instrumentalProvider === "mock" ? "mocked" : ""}`}
+                    <span className="text-[9px] font-mono px-2 py-0.5 rounded-full"
                       style={{
                         background: currentSong.instrumentalProvider === "mock" ? "rgba(232,168,64,0.15)" : "var(--bg-tertiary)",
                         color: currentSong.instrumentalProvider === "mock" ? "#e8a840" : "var(--text-tertiary)",
@@ -291,15 +316,19 @@ export default function SongCreator({ voiceModels, styles, selectedStyle, onStyl
                       曲: {currentSong.instrumentalProvider === "mock" ? "模拟" : "AI"}
                     </span>
                   )}
-                  {currentSong.hasVocals ? (
+                  {currentSong.svsProvider && currentSong.hasVocals && (
                     <span className="text-[9px] font-mono px-2 py-0.5 rounded-full"
-                      style={{ background: "rgba(34,197,94,0.15)", color: "#22c55e" }}>
-                      已合成人声
+                      style={{
+                        background: currentSong.svsProvider === "mock" ? "rgba(232,168,64,0.15)" : "var(--bg-tertiary)",
+                        color: currentSong.svsProvider === "mock" ? "#e8a840" : "var(--text-tertiary)",
+                      }}>
+                      声: {currentSong.svsProvider === "mock" ? "模拟" : "AI"}
                     </span>
-                  ) : (
+                  )}
+                  {currentSong.vocalProvider && currentSong.hasVocals && (
                     <span className="text-[9px] font-mono px-2 py-0.5 rounded-full"
                       style={{ background: "var(--bg-tertiary)", color: "var(--text-tertiary)" }}>
-                      纯伴奏
+                      人声: {currentSong.vocalProvider}
                     </span>
                   )}
                 </div>

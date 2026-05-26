@@ -14,6 +14,7 @@ from app.models.user import User
 from app.models.model_registry import validate_model_key
 from app.schemas.audio import UploadResponse, StatusResponse, AudioAssetResponse, AudioAssetListResponse, StyleVectorResponse
 from app.services.audio_service import save_upload_and_create_asset
+from app.services.job_service import create_job, update_job_status
 from app.tasks.audio_pipeline import process_audio_upload, _separate_vocals, _extract_style_embedding
 from app.tasks.celery_app import celery_app
 from app.utils.file_utils import validate_audio_file
@@ -31,22 +32,60 @@ def _run_pipeline_sync(
     user_id: int,
     vocal_sep_model: str,
     style_extract_model: str,
+    job_id: int | None = None,
 ) -> dict:
     """Run the full audio processing pipeline synchronously (no Celery needed)."""
     from app.core.database import SessionLocal
     from app.models.audio_asset import AudioAsset
     from app.models.style_vector import StyleVector
     from app.models.providers.resource_manager import resource_manager
+    from app.models.job import Job
+
+    _t0 = time.perf_counter()
+    _file_size_mb = 0.0
+    try:
+        if os.path.exists(audio_path):
+            _file_size_mb = os.path.getsize(audio_path) / (1024 * 1024)
+    except OSError:
+        pass
 
     logger.info(f"Sync pipeline start: asset={asset_id} vocal_sep={vocal_sep_model} style_ext={style_extract_model}")
+
+    def _update_job(db_session, status: str, *, stage: str | None = None, progress: int | None = None, error: str | None = None, result: dict | None = None):
+        if job_id is None:
+            return
+        try:
+            job = db_session.query(Job).filter(Job.id == job_id).first()
+            if job:
+                update_job_status(db_session, job, status, stage=stage, progress=progress, error_message=error, result=result)
+        except Exception as e:
+            logger.warning(f"Failed to update job {job_id}: {e}")
+
+    # Mark job as running
+    _db = SessionLocal()
+    try:
+        _update_job(_db, "running", stage="separating", progress=5)
+    finally:
+        _db.close()
+
     try:
         logger.info(f"Step 1/2: vocal separation for asset {asset_id}")
+        _t1 = time.perf_counter()
         instrumental_path = _separate_vocals(audio_path, task_id="", model=vocal_sep_model)
-        logger.info(f"Step 1/2 done: instrumental at {instrumental_path}")
+        _t_vocal = time.perf_counter() - _t1
+        logger.info(f"Step 1/2 done: instrumental at {instrumental_path} ({_t_vocal:.2f}s)")
+
+        _db2 = SessionLocal()
+        try:
+            _update_job(_db2, "running", stage="extracting", progress=50)
+        finally:
+            _db2.close()
 
         logger.info(f"Step 2/2: style extraction for asset {asset_id}")
+        _t2 = time.perf_counter()
         embedding = _extract_style_embedding(instrumental_path, task_id="", model=style_extract_model)
-        logger.info(f"Step 2/2 done: embedding dim={len(embedding)}")
+        _t_style = time.perf_counter() - _t2
+        logger.info(f"Step 2/2 done: embedding dim={len(embedding)} ({_t_style:.2f}s)")
 
         db = SessionLocal()
         try:
@@ -67,6 +106,18 @@ def _run_pipeline_sync(
             db.commit()
             db.refresh(style_vector)
             logger.info(f"Sync pipeline complete: asset={asset_id} style_vector={style_vector.id}")
+            _update_job(db, "completed", stage="completed", progress=100, result={
+                "asset_id": asset_id,
+                "style_vector_id": style_vector.id,
+            })
+
+            _total = time.perf_counter() - _t0
+            logger.info(
+                "PIPELINE_TIMING sync asset=%d vocal_sep=%.2fs style_extract=%.2fs db_write=%.2fs "
+                "total=%.2fs vocal_model=%s style_model=%s file_size=%.1fMB dim=%d",
+                asset_id, _t_vocal, _t_style, _total - _t_vocal - _t_style,
+                _total, vocal_sep_model, style_extract_model, _file_size_mb, len(embedding),
+            )
 
             return {
                 "stage": "completed",
@@ -83,11 +134,21 @@ def _run_pipeline_sync(
         finally:
             db.close()
     except Exception as e:
-        logger.error(f"Sync pipeline failed for asset {asset_id}: {e}", exc_info=True)
+        _total = time.perf_counter() - _t0
+        logger.error(
+            "PIPELINE_TIMING sync FAILED asset=%d after=%.2fs vocal_model=%s style_model=%s file_size=%.1fMB error=%s",
+            asset_id, _total, vocal_sep_model, style_extract_model, _file_size_mb, e,
+        )
         _mark_asset_failed(asset_id)
+        _fail_db = SessionLocal()
+        try:
+            _update_job(_fail_db, "failed", stage="pipeline", error=str(e))
+        finally:
+            _fail_db.close()
         raise
     finally:
-        resource_manager.release_all()
+        # Keep models warm in memory for fast reprocessing
+        pass
 
 
 @router.post("/upload", response_model=UploadResponse)
@@ -97,13 +158,13 @@ async def upload_audio(
     file: UploadFile = File(...),
     vocal_sep_model: str = Form("demucs_htdemucs"),
     style_extract_model: str = Form("clap_laion"),
-    processing_mode: Literal["sync", "async", "auto"] = Query("sync"),
+    processing_mode: Literal["sync", "async", "auto"] = Query("auto"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     """Upload an audio file and start the processing pipeline.
 
-    processing_mode: "auto" (try Celery, fallback sync), "sync" (always sync), "async" (Celery only)
+    processing_mode: "auto" and "sync" run foreground analysis; "async" queues Celery.
     """
     if not validate_model_key("vocal_sep", vocal_sep_model):
         raise HTTPException(status_code=400, detail=f"Unknown vocal separation model: {vocal_sep_model}")
@@ -111,6 +172,7 @@ async def upload_audio(
         raise HTTPException(status_code=400, detail=f"Unknown style extraction model: {style_extract_model}")
 
     content = await file.read()
+    _file_size_mb = len(content) / (1024 * 1024)
     if len(content) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail=f"文件过大，最大 {MAX_UPLOAD_BYTES // (1024*1024)}MB")
     if len(content) == 0:
@@ -120,16 +182,31 @@ async def upload_audio(
     if error:
         raise HTTPException(status_code=400, detail=error)
 
+    _t_save = time.perf_counter()
     asset = save_upload_and_create_asset(db, user, file.filename or "audio.mp3", content, vocal_sep_model=vocal_sep_model)
+    logger.info(
+        "PIPELINE_TIMING upload file=%s size=%.1fMB save=%.2fs asset_id=%d mode=%s",
+        file.filename, _file_size_mb, time.perf_counter() - _t_save,
+        asset.id, processing_mode,
+    )
 
-    if processing_mode == "sync":
-        # Force synchronous — skip Celery entirely
-        logger.info(f"Processing asset {asset.id} in sync mode (forced)")
+    # Create a persistent Job for this upload
+    job = create_job(db, user, "audio_upload", {
+        "asset_id": asset.id,
+        "vocal_sep_model": vocal_sep_model,
+        "style_extract_model": style_extract_model,
+    })
+
+    task_id: str | None = None
+
+    if processing_mode in ("sync", "auto"):
+        logger.info(f"Processing asset {asset.id} in {processing_mode} mode (foreground sync)")
         try:
             result = await asyncio.to_thread(
                 _run_pipeline_sync,
                 asset.file_path, asset.id, user.id,
                 vocal_sep_model, style_extract_model,
+                job_id=job.id,
             )
         except Exception as sync_e:
             # _run_pipeline_sync already called _mark_asset_failed internally
@@ -141,7 +218,9 @@ async def upload_audio(
             # _mark_asset_failed already called inside _run_pipeline_sync
             raise HTTPException(status_code=500, detail=f"音频处理失败: {result.get('reason', '未知错误')}")
     elif processing_mode == "async":
-        # Force Celery — fail if unavailable
+        logger.info(f"Processing asset {asset.id} in async mode (Celery queue)")
+        job.celery_task_id = "celery-pending"
+        db.commit()
         try:
             task = process_audio_upload.delay(
                 audio_path=asset.file_path,
@@ -151,36 +230,19 @@ async def upload_audio(
                 style_extract_model=style_extract_model,
             )
             task_id = task.id
+            # Update job with celery_task_id
+            try:
+                from app.models.job import Job
+                j = db.query(Job).filter(Job.id == job.id).first()
+                if j:
+                    j.celery_task_id = task.id
+                    db.commit()
+            except Exception:
+                pass
         except Exception as e:
             raise HTTPException(status_code=503, detail=f"后台队列不可用 (Redis/Celery 未启动): {e}")
-    else:
-        # Auto: always run sync first for immediate results, try Celery in background
-        logger.info(f"Processing asset {asset.id} in auto mode (sync + optional Celery)")
-        try:
-            result = await asyncio.to_thread(
-                _run_pipeline_sync,
-                asset.file_path, asset.id, user.id,
-                vocal_sep_model, style_extract_model,
-            )
-        except Exception as sync_e:
-            raise HTTPException(status_code=500, detail=f"音频处理失败: {sync_e}") from sync_e
-        task_id = f"sync-{asset.id}"
-        if result.get("style_vector_id"):
-            _store_sync_result(task_id, result)
-        # Also dispatch to Celery for consistency (e.g., cache warming, analytics)
-        try:
-            process_audio_upload.delay(
-                audio_path=asset.file_path,
-                asset_id=asset.id,
-                user_id=user.id,
-                vocal_sep_model=vocal_sep_model,
-                style_extract_model=style_extract_model,
-            )
-        except Exception:
-            logger.debug(f"Celery dispatch skipped for asset {asset.id} (Redis unavailable)")
-
     return UploadResponse(
-        asset_id=asset.id, task_id=task_id or f"sync-{asset.id}",
+        asset_id=asset.id, task_id=task_id or f"sync-{asset.id}", job_id=job.id,
         vocal_sep_model=vocal_sep_model, style_extract_model=style_extract_model,
     )
 
@@ -347,7 +409,7 @@ def delete_audio_asset(
     if asset_dir and os.path.isdir(asset_dir):
         try:
             shutil.rmtree(asset_dir, ignore_errors=True)
-        except Exception:
+        except OSError:
             logger.warning(f"Failed to remove asset directory: {asset_dir}", exc_info=True)
 
     db.delete(asset)

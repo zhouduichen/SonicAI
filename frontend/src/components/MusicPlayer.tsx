@@ -5,6 +5,7 @@ import { Play, Pause, SkipBack, SkipForward, Download, Waveform, ChartBar } from
 import { motion } from "framer-motion";
 import type { GeneratedMusic } from "@/types";
 import WaveformViewer from "./WaveformViewer";
+import MockBadge from "./MockBadge";
 import { API_BASE, getToken } from "@/lib/auth";
 
 interface MusicPlayerProps {
@@ -24,10 +25,18 @@ function formatTime(seconds: number): string {
 function resolveAudioUrl(music: GeneratedMusic): string {
   const fp = music.filePath;
   if (!fp) return "";
-  if (fp.startsWith("http://") || fp.startsWith("https://") || fp.startsWith("blob:") || fp.startsWith("/")) {
+  if (fp.startsWith("http://") || fp.startsWith("https://") || fp.startsWith("blob:")) {
     return fp;
   }
   return `${API_BASE}/music/${music.id}/download`;
+}
+
+function shouldSendAuth(url: string): boolean {
+  return url.startsWith(API_BASE) || (!url.startsWith("http://") && !url.startsWith("https://") && !url.startsWith("blob:"));
+}
+
+function makeDownloadName(title: string): string {
+  return `${title.replace(/[\\/:*?"<>|]/g, "_") || "sonicai-track"}.wav`;
 }
 
 export default function MusicPlayer({ music, hasPrev, hasNext, onPrev, onNext }: MusicPlayerProps) {
@@ -37,44 +46,66 @@ export default function MusicPlayer({ music, hasPrev, hasNext, onPrev, onNext }:
   const [vizMode, setVizMode] = useState<"waveform" | "spectrogram">("waveform");
   const [analyserNode, setAnalyserNode] = useState<AnalyserNode | null>(null);
   const [audioUrl, setAudioUrl] = useState("");
+  const [playbackSpeed, setPlaybackSpeed] = useState(1);
+
+  const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5];
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const dirHandleRef = useRef<FileSystemDirectoryHandle | null>(null);
+  const objectUrlRef = useRef<string | null>(null);
 
   // Fetch audio with auth token and create blob URL
   useEffect(() => {
-    if (!music) return;
+    if (!music) {
+      setAudioUrl("");
+      return;
+    }
     let cancelled = false;
+    const sourceUrl = resolveAudioUrl(music);
 
     (async () => {
       try {
-        const token = await getToken();
-        const res = await fetch(resolveAudioUrl(music), {
-          headers: { Authorization: `Bearer ${token}` },
+        const token = shouldSendAuth(sourceUrl) ? await getToken() : null;
+        const res = await fetch(sourceUrl, {
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
         });
         if (!res.ok) throw new Error("Failed to fetch audio");
         const blob = await res.blob();
-        if (!cancelled) {
-          // Revoke old blob URL if any
-          if (audioUrl) URL.revokeObjectURL(audioUrl);
-          setAudioUrl(URL.createObjectURL(blob));
+        const nextUrl = URL.createObjectURL(blob);
+        if (cancelled) {
+          URL.revokeObjectURL(nextUrl);
+          return;
         }
+        if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+        objectUrlRef.current = nextUrl;
+        setAudioUrl(nextUrl);
       } catch {
-        if (!cancelled) setAudioUrl(resolveAudioUrl(music));
+        if (!cancelled) {
+          if (objectUrlRef.current) {
+            URL.revokeObjectURL(objectUrlRef.current);
+            objectUrlRef.current = null;
+          }
+          setAudioUrl(sourceUrl);
+        }
       }
     })();
 
     return () => { cancelled = true; };
-  }, [music?.id]);
+  }, [music]);
+
+  // Sync playback speed
+  useEffect(() => {
+    if (audioRef.current) audioRef.current.playbackRate = playbackSpeed;
+  }, [playbackSpeed]);
 
   // Cleanup on music change
   useEffect(() => {
-    if (!music) return;
     setIsPlaying(false);
     setCurrentTime(0);
     setDuration(0);
     setAnalyserNode(null);
+    setPlaybackSpeed(1);
     if (audioCtxRef.current?.state !== "closed") {
       audioCtxRef.current?.close().catch(() => {});
       audioCtxRef.current = null;
@@ -84,7 +115,7 @@ export default function MusicPlayer({ music, hasPrev, hasNext, onPrev, onNext }:
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (audioUrl) URL.revokeObjectURL(audioUrl);
+      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
       const audioCtx = audioCtxRef.current;
       if (audioCtx && audioCtx.state !== "closed") {
         audioCtx.close().catch(() => {});
@@ -128,28 +159,36 @@ export default function MusicPlayer({ music, hasPrev, hasNext, onPrev, onNext }:
 
   const handleDownload = useCallback(async () => {
     if (!music) return;
+    const sourceUrl = resolveAudioUrl(music);
+    const filename = makeDownloadName(music.title);
+    let objectUrl: string | null = null;
 
     try {
+      const token = shouldSendAuth(sourceUrl) ? await getToken() : null;
+      const response = await fetch(sourceUrl, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      if (!response.ok) throw new Error("Download failed");
+      const blob = await response.blob();
+
       if (!dirHandleRef.current) {
         dirHandleRef.current = await window.showDirectoryPicker();
       }
-      const filename = `${music.title}.wav`;
       const fileHandle = await dirHandleRef.current.getFileHandle(filename, { create: true });
       const writable = await fileHandle.createWritable();
-
-      const response = await fetch(resolveAudioUrl(music));
-      await response.body?.pipeTo(writable);
+      await blob.stream().pipeTo(writable);
     } catch (err) {
       const error = err as Error;
       if (error.name === "AbortError") return;
 
       // Fallback: simple browser download
+      objectUrl = audioUrl.startsWith("blob:") ? audioUrl : null;
       const a = document.createElement("a");
-      a.href = resolveAudioUrl(music);
-      a.download = `${music.title}.wav`;
+      a.href = objectUrl || sourceUrl;
+      a.download = filename;
       a.click();
     }
-  }, [music]);
+  }, [audioUrl, music]);
 
   const handleLoadedMetadata = () => {
     if (audioRef.current) setDuration(audioRef.current.duration);
@@ -194,10 +233,15 @@ export default function MusicPlayer({ music, hasPrev, hasNext, onPrev, onNext }:
           {/* Track info */}
           <div className="flex items-center justify-between">
             <div className="min-w-0">
-              <p className="text-sm font-semibold truncate"
-                style={{ color: "var(--text-primary)" }}>
-                {music.title}
-              </p>
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-semibold truncate"
+                  style={{ color: "var(--text-primary)" }}>
+                  {music.title}
+                </p>
+                {music.providerMode === "mock" && (
+                  <MockBadge music={music} variant="full" />
+                )}
+              </div>
               <p className="text-[10px] font-mono tracking-[0.1em] uppercase truncate mt-0.5"
                 style={{ color: "var(--accent)" }}>
                 {music.styleName}
@@ -261,6 +305,24 @@ export default function MusicPlayer({ music, hasPrev, hasNext, onPrev, onNext }:
               <div className="absolute -right-1.5 -top-1 w-3 h-3 rotate-45 opacity-0 group-hover:opacity-100 transition-opacity"
                 style={{ background: "var(--accent)" }} />
             </div>
+          </div>
+
+          {/* Playback speed */}
+          <div className="flex items-center justify-center gap-1">
+            {SPEEDS.map((s) => (
+              <button
+                key={s}
+                onClick={() => setPlaybackSpeed(s)}
+                className="px-2 py-0.5 rounded text-[9px] font-mono transition-all"
+                style={{
+                  background: playbackSpeed === s ? "var(--accent-soft)" : "var(--bg-tertiary)",
+                  color: playbackSpeed === s ? "var(--accent)" : "var(--text-tertiary)",
+                  border: playbackSpeed === s ? "1px solid var(--accent)" : "1px solid transparent",
+                }}
+              >
+                {s}x
+              </button>
+            ))}
           </div>
 
           {/* Time + Controls */}

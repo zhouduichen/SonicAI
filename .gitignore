@@ -10,6 +10,7 @@ env/
 *.db
 backend/uploads/
 backend/generated/
+generated/
 backend/celery.log
 backend/.env
 *.tmp
@@ -19,6 +20,22 @@ backend/demucs_out*/
 node_modules/
 .next/
 out/
+*.tsbuildinfo
+*.log
+uploads/
+models_check.txt
+
+# AI Model weights (large binary files — never commit)
+*.safetensors
+*.bin
+*.pth
+*.pt
+*.onnx
+*.gguf
+
+# Bundled AI services (large — 5G+ each)
+backend/creator/
+backend/app/services/GPT-SoVITS/
 
 # IDE
 .vscode/
@@ -32,4 +49,5 @@ Thumbs.db
 
 # Docker
 redis_data/
+dump.rdb
 _*.wav

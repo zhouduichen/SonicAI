@@ -1,8 +1,13 @@
 import os
+import logging
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 from app.models.user import User
 from app.core.security import hash_password, verify_password, create_access_token
+from app.core.config import get_settings
+
+logger = logging.getLogger(__name__)
+settings = get_settings()
 
 
 def authenticate_user(db: Session, username: str, password: str) -> dict:
@@ -61,13 +66,28 @@ def register_user(
     }
 
 
-def create_default_user(db: Session) -> User:
-    """Create a default user for MVP if none exists."""
+def create_default_user(db: Session) -> User | None:
+    """Create a default admin user on first run.
+
+    In DEBUG=True (dev): creates admin/admin123 unless DEFAULT_ADMIN_PASSWORD is set.
+    In production: only creates if DEFAULT_ADMIN_PASSWORD is explicitly configured.
+    Returns None when the admin user is intentionally skipped.
+    """
     user = db.query(User).filter(User.username == "admin").first()
     if user:
         return user
 
-    default_password = os.environ.get("DEFAULT_ADMIN_PASSWORD", "admin123")
+    if not settings.DEBUG and not settings.DEFAULT_ADMIN_PASSWORD:
+        logger.info("Production mode: no DEFAULT_ADMIN_PASSWORD set, skipping default admin")
+        return None
+
+    # Dev: use env var or fallback admin123. Production: env var is required.
+    default_password = settings.DEFAULT_ADMIN_PASSWORD or "admin123"
+    if not settings.DEBUG:
+        logger.info("Creating default admin from DEFAULT_ADMIN_PASSWORD")
+    else:
+        logger.info(f"Creating default admin (password={'<env>' if settings.DEFAULT_ADMIN_PASSWORD else 'admin123'})")
+
     user = User(
         username="admin",
         email="admin@sonicai.local",

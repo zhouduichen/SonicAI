@@ -3,18 +3,34 @@
 import time
 import random
 import logging
+import os as _os
 from app.models.providers.base import StyleExtractProvider
+from app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
-try:
-    import laion_clap
+_CLAP_IMPORT_CHECKED = False
+CLAP_AVAILABLE = False
+_laion_clap = None
 
-    CLAP_AVAILABLE = True
-    logger.info("laion_clap package found")
-except ImportError:
-    CLAP_AVAILABLE = False
-    logger.warning("laion_clap not installed — using mock style extraction")
+
+def _check_clap():
+    """Lazy-import laion_clap on first use. Avoids 20s HuggingFace API call at startup."""
+    global _CLAP_IMPORT_CHECKED, CLAP_AVAILABLE, _laion_clap
+    if _CLAP_IMPORT_CHECKED:
+        return
+    _CLAP_IMPORT_CHECKED = True
+    try:
+        # Suppress unauthenticated HF Hub warnings during import
+        import os as _os2
+        _os2.environ.setdefault("HF_HUB_DISABLE_IMPORT_CHECK", "1")
+        import laion_clap as _lcp
+        _laion_clap = _lcp
+        CLAP_AVAILABLE = True
+        logger.info("laion_clap package found")
+    except ImportError:
+        CLAP_AVAILABLE = False
+        logger.warning("laion_clap not installed — using mock style extraction")
 
 
 class LocalCLAPProvider(StyleExtractProvider):
@@ -29,25 +45,28 @@ class LocalCLAPProvider(StyleExtractProvider):
     def model_key(self) -> str:
         return self._key
 
-    def load(self, use_onnx: bool = False) -> None:
-        self._use_onnx = use_onnx
+    def load(self, use_onnx: bool = False, force_mock: bool = False) -> None:
+        self._use_onnx = use_onnx and not force_mock
+        self._force_mock = force_mock
+        if force_mock:
+            self._loaded = True
+            self._model = None
+            logger.info(f"Mock CLAP ({self._key}) ready (forced)")
+            return
         if use_onnx:
             self._loaded = True
             logger.info(f"ONNX CLAP ({self._key}) ready (CPU path)")
             return
+        _check_clap()
         if CLAP_AVAILABLE:
             try:
-                self._model = laion_clap.CLAP_Module(enable_fusion=False)
-                # Use model_id to auto-download from HuggingFace (cached after first download):
-                # 0=630k, 1=630k+audioset (recommended), 2=630k-fusion, 3=630k+audioset-fusion
+                self._model = _laion_clap.CLAP_Module(enable_fusion=False)
                 model_id_map = {
-                    "clap_laion": 1,
-                    "clap_msclap": 0,
-                    "clap_htsat": 1,
+                    "clap_laion": 1, "clap_msclap": 0, "clap_htsat": 1,
                 }
                 model_id = model_id_map.get(self._key, 1)
                 self._model.load_ckpt(model_id=model_id)
-                logger.info(f"CLAP model ({self._key}) loaded on GPU")
+                logger.info(f"CLAP model ({self._key}) loaded")
             except Exception as e:
                 logger.warning(f"CLAP model ({self._key}) failed: {e}. Falling back to mock.")
                 self._model = None
@@ -110,12 +129,14 @@ class LocalCLAPProvider(StyleExtractProvider):
         dim_map = {"clap_laion": 512, "clap_msclap": 1024, "clap_htsat": 512, "encodec_6kbps": 128}
         dim = dim_map.get(self._key, 512)
 
-        if getattr(self, "_use_onnx", False):
+        if getattr(self, "_force_mock", False):
+            # Skip real paths, fall through to mock
+            pass
+        elif getattr(self, "_use_onnx", False):
             result = self._infer_onnx(audio_path)
             if result is not None:
                 return result
-
-        if CLAP_AVAILABLE and self._model is not None:
+        elif CLAP_AVAILABLE and self._model is not None:
             try:
                 emb = self._model.get_audio_embedding_from_filelist(x=[audio_path])
                 return emb[0].tolist()[:dim]
@@ -123,5 +144,7 @@ class LocalCLAPProvider(StyleExtractProvider):
                 logger.error(f"CLAP extraction failed: {e}")
 
         # Mock fallback
+        if not get_settings().ENABLE_MOCK_FALLBACK:
+            raise RuntimeError("Mock fallback disabled — CLAP extraction failed")
         time.sleep(2)
         return [round(random.uniform(-1.0, 1.0), 6) for _ in range(dim)]

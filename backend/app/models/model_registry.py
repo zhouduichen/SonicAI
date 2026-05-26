@@ -227,5 +227,5 @@ def validate_model_key(category: CategoryKey, key: str) -> bool:
 
 def get_default_model(category: CategoryKey) -> str:
     """Return the default model key for a pipeline stage."""
-    defaults = {"vocal_sep": "demucs_htdemucs", "style_extract": "clap_laion", "music_gen": "musicgen_small"}
+    defaults = {"vocal_sep": "demucs_htdemucs", "style_extract": "encodec_6kbps", "music_gen": "musicgen_small"}
     return defaults.get(category, "")

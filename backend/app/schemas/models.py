@@ -10,6 +10,7 @@ class ModelInfoResponse(BaseModel):
     speed: str
     embedding_dim: int | None = None
     installed: bool = False
+    provider_mode: str = "unknown"  # "real" | "mock" | "unavailable"
     pros: list[str] | None = None
     cons: list[str] | None = None
 
@@ -18,3 +19,4 @@ class ModelCatalogResponse(BaseModel):
     vocal_separation: list[ModelInfoResponse]
     style_extraction: list[ModelInfoResponse]
     music_generation: list[ModelInfoResponse]
+    svs: list[ModelInfoResponse] | None = None

@@ -8,7 +8,7 @@ import {
   DEFAULT_MUSIC_GENERATION_MODELS,
 } from "./default-models";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api/v1";
 
 export const DEFAULT_MODEL_CATALOG: ModelCatalog = {
   vocal_separation: DEFAULT_VOCAL_SEPARATION_MODELS,

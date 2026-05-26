@@ -1,6 +1,5 @@
 import os
 import logging
-import threading
 from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
@@ -13,6 +12,7 @@ from app.schemas.song import (
     SongStatusResponse, SongListResponse,
 )
 from app.services import song_service
+from app.services.job_service import create_job, update_job_status
 from app.tasks.song_pipeline import create_song as create_song_task, run_song_pipeline_sync
 
 router = APIRouter(prefix="/song", tags=["song"])
@@ -70,40 +70,68 @@ def create(
             song_service.update_song(db, song.id, user.id, reference_vocal_path=reference_audio_path)
 
     if processing_mode == "sync":
+        job = create_job(db, user, "song_creation", {
+            "song_id": song.id,
+            "theme": request.theme,
+            "voice_model_id": request.voice_model_id,
+            "style_vector_id": request.style_vector_id,
+            "reference_audio_path": reference_audio_path,
+        })
         run_song_pipeline_sync(
             song_id=song.id,
             theme=request.theme,
             voice_model_id=request.voice_model_id,
             style_vector_id=request.style_vector_id,
             reference_audio_path=reference_audio_path,
+            job_id=job.id,
         )
+        update_job_status(db, job, "completed", stage="completed", progress=100)
+        job_id = job.id
     elif processing_mode == "async":
+        job = create_job(db, user, "song_creation", {
+            "song_id": song.id,
+            "theme": request.theme,
+            "voice_model_id": request.voice_model_id,
+            "style_vector_id": request.style_vector_id,
+            "reference_audio_path": reference_audio_path,
+        })
         try:
-            create_song_task.delay(
-                song_id=song.id,
-                theme=request.theme,
-                voice_model_id=request.voice_model_id,
-                style_vector_id=request.style_vector_id,
-                reference_audio_path=reference_audio_path,
-            )
+            task = create_song_task.delay(job_id=job.id)
+            job.celery_task_id = task.id
+            db.commit()
         except Exception as e:
             raise HTTPException(status_code=503, detail=f"后台队列不可用: {e}") from e
+        job_id = job.id
     else:
-        # Default local mode: no Redis/Celery required, and the request returns immediately.
-        thread = threading.Thread(
-            target=run_song_pipeline_sync,
-            kwargs={
-                "song_id": song.id,
-                "theme": request.theme,
-                "voice_model_id": request.voice_model_id,
-                "style_vector_id": request.style_vector_id,
-                "reference_audio_path": reference_audio_path,
-            },
-            daemon=True,
-        )
-        thread.start()
+        # Auto: prefer Celery when available, otherwise keep the one-click sync app usable.
+        job = create_job(db, user, "song_creation", {
+            "song_id": song.id,
+            "theme": request.theme,
+            "voice_model_id": request.voice_model_id,
+            "style_vector_id": request.style_vector_id,
+            "reference_audio_path": reference_audio_path,
+        })
+        try:
+            task = create_song_task.delay(job_id=job.id)
+            job.celery_task_id = task.id
+            db.commit()
+        except Exception as e:
+            logger.warning(f"Celery unavailable ({e}), creating song synchronously")
+            try:
+                run_song_pipeline_sync(
+                    song_id=song.id,
+                    theme=request.theme,
+                    voice_model_id=request.voice_model_id,
+                    style_vector_id=request.style_vector_id,
+                    reference_audio_path=reference_audio_path,
+                    job_id=job.id,
+                )
+                update_job_status(db, job, "completed", stage="completed", progress=100)
+            except Exception as sync_e:
+                raise HTTPException(status_code=500, detail=f"歌曲创作失败: {sync_e}") from sync_e
+        job_id = job.id
 
-    return SongCreateResponse(song_id=song.id)
+    return SongCreateResponse(song_id=song.id, job_id=job_id)
 
 
 @router.get("/list", response_model=SongListResponse)

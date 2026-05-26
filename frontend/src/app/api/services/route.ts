@@ -4,6 +4,9 @@ import net from "net";
 import path from "path";
 import fs from "fs";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 declare global {
   var __backendProcess: ChildProcess | null | undefined;
   var __lastServiceAction: number | undefined;
@@ -23,6 +26,20 @@ function probePort(port: number, timeoutMs = 1500): Promise<boolean> {
 
 function resolveBackendDir(): string {
   return path.resolve(process.cwd(), "..", "backend");
+}
+
+async function waitForPort(
+  port: number,
+  timeoutMs = 20_000,
+  shouldStop?: () => boolean,
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await probePort(port, 500)) return true;
+    if (shouldStop?.()) return false;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  return false;
 }
 
 function findPython(): string {
@@ -75,20 +92,25 @@ async function startBackend(): Promise<{ ok: boolean; message: string }> {
   }
 
   const backendDir = resolveBackendDir();
+  if (!fs.existsSync(backendDir)) {
+    return { ok: false, message: `backend directory not found: ${backendDir}` };
+  }
+
   const pythonExe = findPython();
 
   try {
-    globalThis.__backendProcess = spawn(
+    const proc = spawn(
       pythonExe,
       ["-m", "uvicorn", "app.main:app", "--port", "8000"],
       {
         cwd: backendDir,
-        stdio: "pipe",
+        stdio: "ignore",
         shell: false,
         windowsHide: true,
       },
     );
 
+    globalThis.__backendProcess = proc;
     globalThis.__backendProcess.on("exit", () => {
       globalThis.__backendProcess = null;
     });
@@ -96,7 +118,14 @@ async function startBackend(): Promise<{ ok: boolean; message: string }> {
       globalThis.__backendProcess = null;
     });
 
-    return { ok: true, message: "started" };
+    const ready = await waitForPort(8000, 20_000, () => proc.exitCode !== null);
+    if (ready) {
+      return { ok: true, message: "started" };
+    }
+    if (proc.exitCode !== null) {
+      return { ok: false, message: `backend exited with code ${proc.exitCode}` };
+    }
+    return { ok: false, message: "backend start timed out" };
   } catch (err: unknown) {
     const code = (err as NodeJS.ErrnoException)?.code;
     if (code === "ENOENT") {

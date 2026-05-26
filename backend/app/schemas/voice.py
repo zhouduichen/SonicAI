@@ -13,6 +13,7 @@ class TrainVoiceRequest(BaseModel):
 class TrainVoiceResponse(BaseModel):
     model_config = ConfigDict(protected_namespaces=())
     model_id: int
+    job_id: int | None = None
     status: str
     message: str = "Voice training started"
 
@@ -56,6 +57,7 @@ class SingRequest(BaseModel):
 
 class SingResponse(BaseModel):
     generation_id: int
+    job_id: int | None = None
     status: str
     message: str = "Vocal generation started"
 
