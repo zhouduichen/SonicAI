@@ -1,22 +1,32 @@
 """Tests for Alembic migration upgrade/downgrade rollback safety."""
 
 import os
+import tempfile
 import pytest
 
-# Point Alembic at the test database URL
-os.environ["DATABASE_URL"] = "sqlite:///./test_migration.db"
+_db_path: str | None = None
+
+
+def _db_url() -> str:
+    global _db_path
+    if _db_path is None:
+        tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        tmp.close()
+        _db_path = tmp.name
+    return f"sqlite:///{_db_path}"
 
 
 @pytest.fixture(autouse=True)
 def clean_migration_db():
     """Remove the test DB before each migration test (fresh slate)."""
+    path = _db_url().replace("sqlite:///", "")
     try:
-        os.unlink("test_migration.db")
+        os.unlink(path)
     except OSError:
         pass
     yield
     try:
-        os.unlink("test_migration.db")
+        os.unlink(path)
     except OSError:
         pass
 
@@ -30,7 +40,7 @@ def _run_alembic(command: str, revision: str = "head"):
     backend_dir = os.path.join(os.path.dirname(__file__), "..")
     alembic_cfg = Config(os.path.join(backend_dir, "alembic.ini"))
     alembic_cfg.set_main_option("script_location", os.path.join(backend_dir, "migrations"))
-    alembic_cfg.set_main_option("sqlalchemy.url", "sqlite:///./test_migration.db")
+    alembic_cfg.set_main_option("sqlalchemy.url", _db_url())
 
     if command == "upgrade":
         cmd.upgrade(alembic_cfg, revision)
@@ -50,7 +60,7 @@ def test_all_migrations_apply_and_rollback():
 
     # Verify the tables exist
     from sqlalchemy import create_engine, inspect
-    engine = create_engine("sqlite:///./test_migration.db")
+    engine = create_engine(_db_url())
     inspector = inspect(engine)
     tables = inspector.get_table_names()
     assert "jobs" in tables, "jobs table should exist after migration"
@@ -76,7 +86,7 @@ def test_all_migrations_apply_and_rollback():
     _run_alembic("downgrade", "base")
 
     # Verify tables are gone
-    engine = create_engine("sqlite:///./test_migration.db")
+    engine = create_engine(_db_url())
     inspector = inspect(engine)
     tables = inspector.get_table_names()
     assert "jobs" not in tables, "jobs table should be dropped after full downgrade"
@@ -89,7 +99,7 @@ def test_incremental_downgrade_re_apply():
 
     # Record the revision before downgrade
     from sqlalchemy import create_engine, text
-    engine = create_engine("sqlite:///./test_migration.db")
+    engine = create_engine(_db_url())
     with engine.connect() as conn:
         result = conn.execute(text("SELECT version_num FROM alembic_version"))
         before_downgrade = result.scalar()
@@ -98,7 +108,7 @@ def test_incremental_downgrade_re_apply():
     # Downgrade one step
     _run_alembic("downgrade", "-1")
 
-    engine = create_engine("sqlite:///./test_migration.db")
+    engine = create_engine(_db_url())
     with engine.connect() as conn:
         result = conn.execute(text("SELECT version_num FROM alembic_version"))
         after_downgrade = result.scalar()
@@ -109,7 +119,7 @@ def test_incremental_downgrade_re_apply():
     # Re-apply the latest
     _run_alembic("upgrade", "head")
 
-    engine = create_engine("sqlite:///./test_migration.db")
+    engine = create_engine(_db_url())
     with engine.connect() as conn:
         result = conn.execute(text("SELECT version_num FROM alembic_version"))
         re_upgraded = result.scalar()

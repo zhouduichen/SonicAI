@@ -61,6 +61,47 @@ docker compose -f docker-compose.yml -f docker-compose.cpu.yml up -d
 
 Docker 构建时自动运行 `precache_models.py`，模型权重嵌入镜像中，运行时无需下载。
 
+### 生产部署注意事项
+
+| 项目 | 说明 |
+|------|------|
+| **SECRET_KEY** | 必须设为随机长字符串（64+ 字符），`openssl rand -hex 64` 生成 |
+| **DEFAULT_ADMIN_PASSWORD** | 生产环境必须设置，用于首次启动创建管理员账号 |
+| **ENABLE_MOCK_FALLBACK** | 生产环境设为 `false`，防止静默生成假音频 |
+| **数据库** | SQLite 适合单节点；多 Celery Worker 部署需切换 PostgreSQL |
+| **DEBUG** | 生产环境设为 `false`，禁用自动迁移和调试页面 |
+| **Alembic** | 容器启动时自动运行 `alembic upgrade head`（见 `entrypoint.sh`） |
+| **模型预热** | 首次启动会自动下载模型权重（~4GB），建议先运行 `precache_models.py` |
+
+最小生产配置（`.env`）：
+
+```bash
+SECRET_KEY=<随机64字符>
+DEFAULT_ADMIN_PASSWORD=<强密码>
+ENABLE_MOCK_FALLBACK=false
+DEBUG=false
+```
+
+### 多 Worker 扩展
+
+生产环境如需并行处理多个任务，需将 Celery worker 从 supervisor 中分离为独立容器：
+
+```yaml
+# docker-compose.yml 补充
+  worker:
+    build: ./backend
+    command: celery -A app.tasks.celery_app worker -l info -P solo --concurrency=1
+    environment:
+      - DATABASE_URL=postgresql://user:pass@db:5432/sonicai
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - model_cache:/root/.cache
+    deploy:
+      replicas: 3
+    depends_on:
+      - redis
+
+
 ## 当前 AI 模型状态
 
 | 模型 | 状态 | 说明 |

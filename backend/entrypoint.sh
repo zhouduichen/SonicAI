@@ -21,6 +21,10 @@ fi
 TIER="${SONICAI_HARDWARE_TIER:-mid}"
 echo "Hardware tier: $TIER"
 
+# Run database migrations (required for production; auto-migrate only active in DEBUG mode)
+echo "Running Alembic migrations..."
+alembic upgrade head 2>&1 || echo "WARNING: Alembic migration failed — check DATABASE_URL"
+
 # Start supervisor (uvicorn + celery worker)
 mkdir -p /etc/supervisor/conf.d
 cat > /etc/supervisor/conf.d/sonicai.conf << 'SUPERVISOR_EOF'
