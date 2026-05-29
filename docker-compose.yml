@@ -31,6 +31,8 @@ services:
       - UPLOAD_DIR=/app/data/uploads
       - GENERATED_DIR=/app/data/generated
       - CORS_ORIGINS=["http://localhost:3000","http://127.0.0.1:3000"]
+      - HF_ENDPOINT=https://hf-mirror.com
+      - HF_HUB_ENABLE_HTTP_BACKTRACE=1
     volumes:
       - backend_data:/app/data
       - model_cache:/root/.cache

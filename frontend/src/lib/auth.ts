@@ -28,10 +28,8 @@ export async function login(username: string, password: string): Promise<string>
         return cachedToken;
       }
     }
-    // Generate demo token locally when backend is unreachable
-    cachedToken = btoa(`demo:${username}:${Date.now()}`);
-    tokenExpiry = Date.now() + 23 * 60 * 60 * 1000;
-    return cachedToken;
+    // Backend unreachable — fail hard so the UI shows the real state
+    throw new Error("后端服务不可达，请确认服务已启动");
   }
   const res = await fetch(`${API_BASE}/auth/login`, {
     method: "POST",

@@ -42,6 +42,15 @@ def _update_job_celery(db, job_id: int, celery_task_id: str):
         logger.warning(f"Failed to set celery_task_id for job {job_id}: {e}")
 
 
+def _celery_worker_available() -> bool:
+    """Check if at least one Celery worker is alive (not just broker)."""
+    try:
+        stats = celery_app.control.inspect(timeout=2).stats()
+        return bool(stats)
+    except Exception:
+        return False
+
+
 def _sync_generate_music(
     embedding_json: str,
     text_prompt: str,
@@ -171,17 +180,22 @@ def generate(
         except Exception as e:
             raise HTTPException(status_code=503, detail=f"后台队列不可用 (Redis/Celery 未启动): {e}")
     else:
-        # Auto
+        # Auto: prefer Celery when workers are alive, fall back to sync
         task_id = None
-        try:
-            task = process_music_generation.delay(
-                embedding_json=vector.embedding, text_prompt=body.text_prompt,
-                vector_id=vector.id, user_id=user.id, music_gen_model=body.music_gen_model,
-            )
-            task_id = task.id
-            _update_job_celery(db, job.id, task.id)
-        except Exception as e:
-            logger.warning(f"Celery unavailable ({e}), generating music synchronously")
+        celery_ok = _celery_worker_available()
+        if celery_ok:
+            try:
+                task = process_music_generation.delay(
+                    embedding_json=vector.embedding, text_prompt=body.text_prompt,
+                    vector_id=vector.id, user_id=user.id, music_gen_model=body.music_gen_model,
+                )
+                task_id = task.id
+                _update_job_celery(db, job.id, task.id)
+            except Exception as e:
+                logger.warning(f"Celery submit failed ({e})")
+                celery_ok = False
+        if not celery_ok:
+            logger.info("Generating music synchronously (no Celery worker)")
             result = _sync_generate_music(
                 vector.embedding, body.text_prompt, vector.id, user.id, body.music_gen_model,
                 job_id=job.id, db=db,
@@ -263,15 +277,21 @@ def blend_generate(
         except Exception as e:
             raise HTTPException(status_code=503, detail=f"后台队列不可用 (Redis/Celery 未启动): {e}")
     else:
-        try:
-            task = process_blend_generation.delay(
-                embeddings=embeddings, text_prompt=body.text_prompt,
-                user_id=user.id, music_gen_model=body.music_gen_model,
-            )
-            task_id = task.id
-            _update_job_celery(db, job.id, task.id)
-        except Exception as e:
-            logger.warning(f"Celery unavailable ({e}), blending synchronously")
+        task_id = None
+        celery_ok = _celery_worker_available()
+        if celery_ok:
+            try:
+                task = process_blend_generation.delay(
+                    embeddings=embeddings, text_prompt=body.text_prompt,
+                    user_id=user.id, music_gen_model=body.music_gen_model,
+                )
+                task_id = task.id
+                _update_job_celery(db, job.id, task.id)
+            except Exception as e:
+                logger.warning(f"Celery submit failed ({e})")
+                celery_ok = False
+        if not celery_ok:
+            logger.info("Blending synchronously (no Celery worker)")
             blended = _blend_embeddings(embeddings)
             result = _sync_generate_music(json.dumps(blended), body.text_prompt, 0, user.id, body.music_gen_model, job_id=job.id, db=db)
             task_id = f"sync-{result.get('music_id', 'blend')}"
@@ -351,22 +371,27 @@ def generate_batch(
         except Exception as e:
             raise HTTPException(status_code=503, detail=f"后台队列不可用 (Redis/Celery 未启动): {e}")
     else:
-        try:
-            from app.tasks.celery_app import celery_app
-            batch_key = f"batch:{batch_id}"
-            for prompt in body.prompts:
-                for model in body.music_gen_models:
-                    task = process_batch_generation.delay(
-                        embedding_json=vector.embedding, text_prompt=prompt,
-                        user_id=user.id, music_gen_model=model, batch_id=batch_id,
-                    )
-                    celery_app.backend.client.sadd(batch_key, task.id)
-                    tasks.append(BatchTaskInfo(task_id=task.id, prompt=prompt, model=model))
-            celery_app.backend.client.expire(batch_key, 3600)
-            celery_app.backend.client.setex(f"batch-job:{batch_id}", 3600, str(job.id))
-            update_job_status(db, job, "running", stage="queued", progress=0)
-        except Exception as e:
-            logger.warning(f"Celery unavailable ({e}), running batch synchronously")
+        celery_ok = _celery_worker_available()
+        if celery_ok:
+            try:
+                from app.tasks.celery_app import celery_app
+                batch_key = f"batch:{batch_id}"
+                for prompt in body.prompts:
+                    for model in body.music_gen_models:
+                        task = process_batch_generation.delay(
+                            embedding_json=vector.embedding, text_prompt=prompt,
+                            user_id=user.id, music_gen_model=model, batch_id=batch_id,
+                        )
+                        celery_app.backend.client.sadd(batch_key, task.id)
+                        tasks.append(BatchTaskInfo(task_id=task.id, prompt=prompt, model=model))
+                celery_app.backend.client.expire(batch_key, 3600)
+                celery_app.backend.client.setex(f"batch-job:{batch_id}", 3600, str(job.id))
+                update_job_status(db, job, "running", stage="queued", progress=0)
+            except Exception as e:
+                logger.warning(f"Celery submit failed ({e})")
+                celery_ok = False
+        if not celery_ok:
+            logger.info("Running batch synchronously (no Celery worker)")
             for prompt in body.prompts:
                 for model in body.music_gen_models:
                     result = _sync_generate_music(vector.embedding, prompt, vector.id, user.id, model)

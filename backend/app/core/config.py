@@ -118,6 +118,9 @@ class Settings(BaseSettings):
     # External SVS service (GPT-SoVITS / Bert-VITS2)
     SVS_API_URL: str = ""
 
+    # HuggingFace endpoint — set to mirror (e.g. https://hf-mirror.com) for China
+    HF_ENDPOINT: str = "https://hf-mirror.com"
+
     # Mock fallback control — set to False in production to prevent silent fake audio
     ENABLE_MOCK_FALLBACK: bool = True
 

@@ -21,13 +21,26 @@ def _check_clap():
         return
     _CLAP_IMPORT_CHECKED = True
     try:
-        # Suppress unauthenticated HF Hub warnings during import
         import os as _os2
         _os2.environ.setdefault("HF_HUB_DISABLE_IMPORT_CHECK", "1")
-        import laion_clap as _lcp
-        _laion_clap = _lcp
-        CLAP_AVAILABLE = True
-        logger.info("laion_clap package found")
+        # laion_clap calls BertTokenizer.from_pretrained() at import time,
+        # which hits huggingface.co and times out in regions where HF is blocked.
+        # Force offline mode during import; models must be pre-cached.
+        _prev_to = _os2.environ.get("TRANSFORMERS_OFFLINE")
+        _prev_ho = _os2.environ.get("HF_HUB_OFFLINE")
+        _os2.environ["TRANSFORMERS_OFFLINE"] = "1"
+        _os2.environ["HF_HUB_OFFLINE"] = "1"
+        try:
+            import laion_clap as _lcp
+            _laion_clap = _lcp
+            CLAP_AVAILABLE = True
+            logger.info("laion_clap package found")
+        finally:
+            for _k, _v in [("TRANSFORMERS_OFFLINE", _prev_to), ("HF_HUB_OFFLINE", _prev_ho)]:
+                if _v is not None:
+                    _os2.environ[_k] = _v
+                else:
+                    _os2.environ.pop(_k, None)
     except ImportError:
         CLAP_AVAILABLE = False
         logger.warning("laion_clap not installed — using mock style extraction")
@@ -66,11 +79,15 @@ class LocalCLAPProvider(StyleExtractProvider):
                 }
                 model_id = model_id_map.get(self._key, 1)
                 self._model.load_ckpt(model_id=model_id)
+                self._loaded = True
                 logger.info(f"CLAP model ({self._key}) loaded")
             except Exception as e:
-                logger.warning(f"CLAP model ({self._key}) failed: {e}. Falling back to mock.")
+                self._loaded = False
                 self._model = None
-        self._loaded = True
+                logger.warning(f"CLAP model ({self._key}) failed: {e}. Falling back to mock.")
+        else:
+            logger.info(f"CLAP module not available — mock mode")
+            self._loaded = True
 
     def unload(self) -> None:
         self._loaded = False
@@ -90,6 +107,7 @@ class LocalCLAPProvider(StyleExtractProvider):
         return t * (duration_seconds / 30)
 
     def supports_gpu(self) -> bool:
+        _check_clap()
         return CLAP_AVAILABLE
 
     def _infer_onnx(self, audio_path: str) -> list[float] | None:

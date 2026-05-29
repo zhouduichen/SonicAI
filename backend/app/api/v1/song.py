@@ -14,9 +14,19 @@ from app.schemas.song import (
 from app.services import song_service
 from app.services.job_service import create_job, update_job_status
 from app.tasks.song_pipeline import create_song as create_song_task, run_song_pipeline_sync
+from app.tasks.celery_app import celery_app
 
 router = APIRouter(prefix="/song", tags=["song"])
 logger = logging.getLogger(__name__)
+
+
+def _celery_worker_available() -> bool:
+    """Check if at least one Celery worker is alive (not just broker)."""
+    try:
+        stats = celery_app.control.inspect(timeout=2).stats()
+        return bool(stats)
+    except Exception:
+        return False
 
 
 @router.post("/create", response_model=SongCreateResponse)
@@ -103,7 +113,7 @@ def create(
             raise HTTPException(status_code=503, detail=f"后台队列不可用: {e}") from e
         job_id = job.id
     else:
-        # Auto: prefer Celery when available, otherwise keep the one-click sync app usable.
+        # Auto: prefer Celery when workers are alive, fall back to sync
         job = create_job(db, user, "song_creation", {
             "song_id": song.id,
             "theme": request.theme,
@@ -111,12 +121,17 @@ def create(
             "style_vector_id": request.style_vector_id,
             "reference_audio_path": reference_audio_path,
         })
-        try:
-            task = create_song_task.delay(job_id=job.id)
-            job.celery_task_id = task.id
-            db.commit()
-        except Exception as e:
-            logger.warning(f"Celery unavailable ({e}), creating song synchronously")
+        celery_ok = _celery_worker_available()
+        if celery_ok:
+            try:
+                task = create_song_task.delay(job_id=job.id)
+                job.celery_task_id = task.id
+                db.commit()
+            except Exception as e:
+                logger.warning(f"Celery submit failed ({e})")
+                celery_ok = False
+        if not celery_ok:
+            logger.info("Creating song synchronously (no Celery worker)")
             try:
                 run_song_pipeline_sync(
                     song_id=song.id,

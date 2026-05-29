@@ -60,12 +60,24 @@ def _check_package_installed(import_name: str) -> bool:
             if spec is None:
                 _PACKAGE_AVAILABILITY[import_name] = False
             else:
-                # Spec found — package is installed but may fail at import time.
-                # Suppress HuggingFace import checks for known offenders.
                 import os as _os3
                 _os3.environ.setdefault("HF_HUB_DISABLE_IMPORT_CHECK", "1")
-                __import__(import_name)
-                _PACKAGE_AVAILABILITY[import_name] = True
+                # Packages like laion_clap trigger HuggingFace network calls
+                # during import (BertTokenizer.from_pretrained). Force offline
+                # to prevent timeouts when huggingface.co is unreachable.
+                _restore: list[tuple[str, str | None]] = []
+                for _e in ("TRANSFORMERS_OFFLINE", "HF_HUB_OFFLINE"):
+                    _restore.append((_e, _os3.environ.get(_e)))
+                    _os3.environ[_e] = "1"
+                try:
+                    __import__(import_name)
+                    _PACKAGE_AVAILABILITY[import_name] = True
+                finally:
+                    for _e, _v in _restore:
+                        if _v is not None:
+                            _os3.environ[_e] = _v
+                        else:
+                            _os3.environ.pop(_e, None)
         except ImportError:
             _PACKAGE_AVAILABILITY[import_name] = False
     return _PACKAGE_AVAILABILITY[import_name]

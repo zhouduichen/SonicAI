@@ -40,6 +40,11 @@ def _preload_models() -> None:
 
 settings = get_settings()
 
+# Apply HF_ENDPOINT to environment for HuggingFace libraries (mirror support for China)
+if settings.HF_ENDPOINT:
+    import os as _os_main
+    _os_main.environ.setdefault("HF_ENDPOINT", settings.HF_ENDPOINT)
+
 
 def _expand_loopback_origins(origins: list[str]) -> list[str]:
     """Treat localhost/127.0.0.1/::1 as equivalent in local development."""

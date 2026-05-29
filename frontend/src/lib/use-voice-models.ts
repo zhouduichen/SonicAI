@@ -23,11 +23,9 @@ export function useVoiceModels(activeTab: string) {
       try {
         const models = await api.getVoiceModels();
         if (!cancelled && models.length > 0) { setVoiceModels(models); return; }
-      } catch { /* API unavailable */ }
-      // Demo fallback
+      } catch { /* API unavailable — keep empty state */ }
       if (cancelled) return;
-      const { MOCK_VOICE_MODELS } = await import("@/lib/mock-data");
-      setVoiceModels(MOCK_VOICE_MODELS);
+      // Empty state is correct; no mock fallback.
     })();
     return () => { cancelled = true; };
   }, [activeTab]);

@@ -72,13 +72,9 @@ export function useAudioAssets() {
           setStyles(freshStyles);
           return;
         }
-      } catch { /* API unavailable */ }
-      // Demo fallback
+      } catch { /* API unavailable — keep empty state */ }
       if (cancelled) return;
-      const { MOCK_ASSETS, MOCK_STYLES } = await import("@/lib/mock-data");
-      setUploadingAssets(MOCK_ASSETS);
-      setStyles(MOCK_STYLES);
-      if (MOCK_STYLES.length > 0) setSelectedStyle(MOCK_STYLES[0]);
+      // Empty state — user sees no assets/styles, which is correct for a fresh DB
     })();
     return () => { cancelled = true; };
   }, []);

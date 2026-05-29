@@ -27,11 +27,9 @@ export function useSongs(activeTab: string) {
           })));
           return;
         }
-      } catch { /* API unavailable */ }
-      // Demo fallback
+      } catch { /* API unavailable — keep empty state */ }
       if (cancelled) return;
-      const { MOCK_SONGS } = await import("@/lib/mock-data");
-      setSongs(MOCK_SONGS);
+      // Empty state is correct; no mock fallback.
     })();
     return () => { cancelled = true; };
   }, [activeTab]);

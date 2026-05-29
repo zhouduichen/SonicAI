@@ -282,10 +282,8 @@ export function useMusicGeneration() {
         setPlaylist(loadedPlaylist);
         return;
       }
-    } catch { /* API unavailable */ }
-    // Demo fallback
-    const { MOCK_PLAYLIST } = await import("@/lib/mock-data");
-    if (MOCK_PLAYLIST.length > 0) setPlaylist(MOCK_PLAYLIST);
+    } catch { /* API unavailable — keep empty state */ }
+    // Empty state is correct; no mock fallback.
   }, []);
 
   return {
