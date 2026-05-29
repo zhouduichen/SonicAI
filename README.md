@@ -2,6 +2,18 @@
 
 上传音频 → AI 分离人声提取风格 → 输入文字描述 → AI 生成原创音乐
 
+## 入口说明
+
+项目包含三个独立的入口文件，功能不同，不要混淆：
+
+| 入口 | 用途 | 适合谁 |
+|------|------|--------|
+| `python start_all.py` | **完整产品一键启动**（推荐） | 终端用户、日常使用 |
+| `python main.py` | **轻量 ML 框架**（无 Web UI） | 框架开发者、模型调试 |
+| `cd backend && uvicorn app.main:app` | **后端 API 服务**（被 `start_all.py` 自动调用） | API 开发者 |
+
+> **⚠️ 注意：** `python main.py` 是轻量框架入口，它读取 `configs/default.py` 配置，通过模型注册中心加载模型并执行推理/训练，**不会启动 Web 界面**。运行完整产品请用 `python start_all.py`。
+
 ## 快速开始（一键启动）
 
 ```bash
